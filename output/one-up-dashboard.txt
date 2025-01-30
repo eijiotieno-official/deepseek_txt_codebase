@@ -1,0 +1,6075 @@
+Path: /src/middleware.ts
+
+import { updateSessionMiddleware } from "./middlewares/updateSessionMiddleware";
+import { setCurrentPathMiddleware } from "./middlewares/setCurrentPathMiddleware";
+import { middlewareHandler } from "./middlewares/middlewareHandler";
+import { NextResponse } from "next/server";
+import { protectedApiMiddleware } from "./middlewares/protectedApiMiddleware";
+import { createClient } from "./lib/utils/supabase/server";
+const protectedPaths = ["/dashboard"];
+export const middleware = middlewareHandler([
+  updateSessionMiddleware,
+  setCurrentPathMiddleware,
+  (next) => {
+    return async (req, evt, res) => {
+      const isProtectedPath = protectedPaths.some((path) =>
+        req.nextUrl.pathname.startsWith(path)
+      );
+      if (isProtectedPath) {
+        const supabase = createClient();
+        const { data: user, error } = await supabase.auth.getUser();
+        if (error || !user) {
+          const pathname = res.headers.get("x-current-path") || "/login";
+          const absoluteURL = new URL(
+            `/login?redirect=${pathname}`,
+            req.nextUrl.origin
+          );
+          return NextResponse.redirect(absoluteURL);
+        }
+      }
+      return next(req, evt, res);
+    };
+  },
+  protectedApiMiddleware,
+]);
+export const config = {
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|manifest.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
+};
+---
+Path: /src/components/ui/button.tsx
+
+import * as React from "react";
+import { Slot } from "@radix-ui/react-slot";
+import { cva, type VariantProps } from "class-variance-authority";
+import { cn } from "@/lib/utils";
+import Spinner from "./spinner";
+const buttonVariants = cva(
+  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-white transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed",
+  {
+    variants: {
+      variant: {
+        primary: "bg-primary text-primary-foreground hover:bg-primary/90",
+        destructive:
+          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        outline:
+          "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+        secondary:
+          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        ghost: "hover:bg-accent hover:text-accent-foreground",
+        link: "text-primary underline-offset-4 hover:underline",
+      },
+      size: {
+        sm: "h-8 rounded-md px-3",
+        md: "h-10 px-4 py-2",
+        lg: "h-12 rounded-md px-8",
+        icon: "h-10 w-10",
+      },
+    },
+    defaultVariants: {
+      variant: "primary",
+      size: "md",
+    },
+  }
+);
+export interface ButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof buttonVariants> {
+  asChild?: boolean;
+  loading?: boolean;
+  full?: boolean;
+}
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  (
+    {
+      className,
+      variant,
+      size,
+      full,
+      loading,
+      asChild = false,
+      children,
+      disabled,
+      ...props
+    },
+    ref
+  ) => {
+    const Comp = asChild ? Slot : "button";
+    let spinVariants:
+      | "primary"
+      | "primary-dark"
+      | "white"
+      | "black"
+      | null
+      | undefined;
+    switch (variant) {
+      case "primary":
+        spinVariants = "primary-dark";
+        break;
+      case "outline":
+        spinVariants = "white";
+        break;
+      case "ghost":
+        spinVariants = "black";
+        break;
+      case "destructive":
+        spinVariants = "black";
+        break;
+      default:
+        spinVariants = "primary";
+    }
+    return (
+      <Comp
+        disabled={disabled || loading}
+        className={cn(buttonVariants({ variant, size, className }), {
+          "w-full": full,
+          "!cursor-wait !opacity-60": loading,
+        })}
+        ref={ref}
+        {...props}
+      >
+        <span className={cn({ invisible: loading })}>{children}</span>
+        {loading && (
+          <Spinner size="sm" variant={spinVariants} className="absolute" />
+        )}
+      </Comp>
+    );
+  }
+);
+Button.displayName = "Button";
+export { Button, buttonVariants };
+---
+Path: /src/components/ui/form-button.tsx
+
+"use client";
+import { useFormStatus } from "react-dom";
+import { Button, ButtonProps } from "./button";
+type FormButtonProps = {
+  isLoading?: boolean;
+} & ButtonProps;
+export default function FormButton({ isLoading, ...rest }: FormButtonProps) {
+  const { pending } = useFormStatus();
+  return <Button loading={pending || isLoading} {...rest} />;
+}
+---
+Path: /src/components/ui/select.tsx
+
+"use client";
+import * as React from "react";
+import * as SelectPrimitive from "@radix-ui/react-select";
+import { Check, ChevronDown, ChevronUp } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { VariantProps, cva } from "class-variance-authority";
+const Select = SelectPrimitive.Root;
+const SelectGroup = SelectPrimitive.Group;
+const SelectValue = SelectPrimitive.Value;
+const selectTriggerVariants = cva(
+  "flex w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
+  {
+    variants: {
+      variant: {
+        default: "",
+        ghost: "border-none gap-5 text-muted-foreground/50 font-semibold",
+      },
+      size: {
+        sm: "h-8 rounded-md px-3",
+        md: "h-10 px-4 py-2",
+        lg: "h-12 rounded-md px-8",
+        icon: "h-10 w-10",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "md",
+    },
+  }
+);
+export interface SelectTriggerProps
+  extends React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>,
+    VariantProps<typeof selectTriggerVariants> {}
+const SelectTrigger = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.Trigger>,
+  SelectTriggerProps
+>(({ className, children, variant, size, ...props }, ref) => (
+  <SelectPrimitive.Trigger
+    ref={ref}
+    className={cn(
+      selectTriggerVariants({ variant, size, className }),
+      className,
+      ""
+    )}
+    {...props}
+  >
+    {children}
+    <SelectPrimitive.Icon asChild>
+      <ChevronDown className="h-4 w-4 opacity-50" />
+    </SelectPrimitive.Icon>
+  </SelectPrimitive.Trigger>
+));
+SelectTrigger.displayName = SelectPrimitive.Trigger.displayName;
+const SelectScrollUpButton = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.ScrollUpButton>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.ScrollUpButton>
+>(({ className, ...props }, ref) => (
+  <SelectPrimitive.ScrollUpButton
+    ref={ref}
+    className={cn(
+      "flex cursor-default items-center justify-center py-1",
+      className
+    )}
+    {...props}
+  >
+    <ChevronUp className="h-4 w-4" />
+  </SelectPrimitive.ScrollUpButton>
+));
+SelectScrollUpButton.displayName = SelectPrimitive.ScrollUpButton.displayName;
+const SelectScrollDownButton = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.ScrollDownButton>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.ScrollDownButton>
+>(({ className, ...props }, ref) => (
+  <SelectPrimitive.ScrollDownButton
+    ref={ref}
+    className={cn(
+      "flex cursor-default items-center justify-center py-1",
+      className
+    )}
+    {...props}
+  >
+    <ChevronDown className="h-4 w-4" />
+  </SelectPrimitive.ScrollDownButton>
+));
+SelectScrollDownButton.displayName =
+  SelectPrimitive.ScrollDownButton.displayName;
+const SelectContent = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
+>(({ className, children, position = "popper", ...props }, ref) => (
+  <SelectPrimitive.Portal>
+    <SelectPrimitive.Content
+      ref={ref}
+      className={cn(
+        "relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        position === "popper" &&
+          "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
+        className
+      )}
+      position={position}
+      {...props}
+    >
+      <SelectScrollUpButton />
+      <SelectPrimitive.Viewport
+        className={cn(
+          "p-1",
+          position === "popper" &&
+            "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]"
+        )}
+      >
+        {children}
+      </SelectPrimitive.Viewport>
+      <SelectScrollDownButton />
+    </SelectPrimitive.Content>
+  </SelectPrimitive.Portal>
+));
+SelectContent.displayName = SelectPrimitive.Content.displayName;
+const SelectLabel = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.Label>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Label>
+>(({ className, ...props }, ref) => (
+  <SelectPrimitive.Label
+    ref={ref}
+    className={cn("py-1.5 pl-8 pr-2 text-sm font-semibold", className)}
+    {...props}
+  />
+));
+SelectLabel.displayName = SelectPrimitive.Label.displayName;
+const SelectItem = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.Item>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
+>(({ className, children, ...props }, ref) => (
+  <SelectPrimitive.Item
+    ref={ref}
+    className={cn(
+      "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      className
+    )}
+    {...props}
+  >
+    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+      <SelectPrimitive.ItemIndicator>
+        <Check className="h-4 w-4" />
+      </SelectPrimitive.ItemIndicator>
+    </span>
+    <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+  </SelectPrimitive.Item>
+));
+SelectItem.displayName = SelectPrimitive.Item.displayName;
+const SelectSeparator = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.Separator>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Separator>
+>(({ className, ...props }, ref) => (
+  <SelectPrimitive.Separator
+    ref={ref}
+    className={cn("-mx-1 my-1 h-px bg-muted", className)}
+    {...props}
+  />
+));
+SelectSeparator.displayName = SelectPrimitive.Separator.displayName;
+export {
+  Select,
+  SelectGroup,
+  SelectValue,
+  SelectTrigger,
+  SelectContent,
+  SelectLabel,
+  SelectItem,
+  SelectSeparator,
+  SelectScrollUpButton,
+  SelectScrollDownButton,
+};
+---
+Path: /src/components/ui/spinner.tsx
+
+import { cn } from "@/lib/utils";
+import { VariantProps, cva } from "class-variance-authority";
+export const spinnerVariants = cva("inline animate-spin", {
+  variants: {
+    variant: {
+      primary: "text-primary fill-slate-200 dark:fill-slate-100",
+      "primary-dark": "text-primary fill-background",
+      white: "text-white fill-slate-300 dark:fill-slate-800",
+      black: "text-slate-800 fill-slate-300 dark:fill-slate-300",
+    },
+    size: {
+      sm: "size-6",
+      md: "size-8",
+      lg: "size-16",
+      xl: "size-24",
+    },
+  },
+  defaultVariants: {
+    variant: "primary",
+    size: "md",
+  },
+});
+export interface SpinnerProps
+  extends React.SVGAttributes<HTMLOrSVGElement>,
+    VariantProps<typeof spinnerVariants> {}
+export default function Spinner({
+  variant,
+  size,
+  className,
+  ...props
+}: SpinnerProps) {
+  return (
+    <>
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 100 101"
+        xmlns="http:
+        {...props}
+        className={cn(spinnerVariants({ variant, size, className }))}
+      >
+        <path
+          d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z"
+          fill="currentFill"
+        />
+        <path
+          d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z"
+          fill="currentColor"
+        />
+      </svg>
+      <span className="sr-only">Loading...</span>
+    </>
+  );
+}
+---
+Path: /src/components/ui/sheet.tsx
+
+"use client"
+import * as React from "react"
+import * as SheetPrimitive from "@radix-ui/react-dialog"
+import { cva, type VariantProps } from "class-variance-authority"
+import { X } from "lucide-react"
+import { cn } from "@/lib/utils"
+const Sheet = SheetPrimitive.Root
+const SheetTrigger = SheetPrimitive.Trigger
+const SheetClose = SheetPrimitive.Close
+const SheetPortal = SheetPrimitive.Portal
+const SheetOverlay = React.forwardRef<
+  React.ElementRef<typeof SheetPrimitive.Overlay>,
+  React.ComponentPropsWithoutRef<typeof SheetPrimitive.Overlay>
+>(({ className, ...props }, ref) => (
+  <SheetPrimitive.Overlay
+    className={cn(
+      "fixed inset-0 z-50 bg-black/80  data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      className
+    )}
+    {...props}
+    ref={ref}
+  />
+))
+SheetOverlay.displayName = SheetPrimitive.Overlay.displayName
+const sheetVariants = cva(
+  "fixed z-50 gap-4 bg-background p-6 shadow-lg transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
+  {
+    variants: {
+      side: {
+        top: "inset-x-0 top-0 border-b data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
+        bottom:
+          "inset-x-0 bottom-0 border-t data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
+        left: "inset-y-0 left-0 h-full w-3/4 border-r data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-sm",
+        right:
+          "inset-y-0 right-0 h-full w-3/4  border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm",
+      },
+    },
+    defaultVariants: {
+      side: "right",
+    },
+  }
+)
+interface SheetContentProps
+  extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
+    VariantProps<typeof sheetVariants> {}
+const SheetContent = React.forwardRef<
+  React.ElementRef<typeof SheetPrimitive.Content>,
+  SheetContentProps
+>(({ side = "right", className, children, ...props }, ref) => (
+  <SheetPortal>
+    <SheetOverlay />
+    <SheetPrimitive.Content
+      ref={ref}
+      className={cn(sheetVariants({ side }), className)}
+      {...props}
+    >
+      {children}
+      <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
+        <X className="h-4 w-4" />
+        <span className="sr-only">Close</span>
+      </SheetPrimitive.Close>
+    </SheetPrimitive.Content>
+  </SheetPortal>
+))
+SheetContent.displayName = SheetPrimitive.Content.displayName
+const SheetHeader = ({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) => (
+  <div
+    className={cn(
+      "flex flex-col space-y-2 text-center sm:text-left",
+      className
+    )}
+    {...props}
+  />
+)
+SheetHeader.displayName = "SheetHeader"
+const SheetFooter = ({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) => (
+  <div
+    className={cn(
+      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
+      className
+    )}
+    {...props}
+  />
+)
+SheetFooter.displayName = "SheetFooter"
+const SheetTitle = React.forwardRef<
+  React.ElementRef<typeof SheetPrimitive.Title>,
+  React.ComponentPropsWithoutRef<typeof SheetPrimitive.Title>
+>(({ className, ...props }, ref) => (
+  <SheetPrimitive.Title
+    ref={ref}
+    className={cn("text-lg font-semibold text-foreground", className)}
+    {...props}
+  />
+))
+SheetTitle.displayName = SheetPrimitive.Title.displayName
+const SheetDescription = React.forwardRef<
+  React.ElementRef<typeof SheetPrimitive.Description>,
+  React.ComponentPropsWithoutRef<typeof SheetPrimitive.Description>
+>(({ className, ...props }, ref) => (
+  <SheetPrimitive.Description
+    ref={ref}
+    className={cn("text-sm text-muted-foreground", className)}
+    {...props}
+  />
+))
+SheetDescription.displayName = SheetPrimitive.Description.displayName
+export {
+  Sheet,
+  SheetPortal,
+  SheetOverlay,
+  SheetTrigger,
+  SheetClose,
+  SheetContent,
+  SheetHeader,
+  SheetFooter,
+  SheetTitle,
+  SheetDescription,
+}
+---
+Path: /src/components/ui/input.tsx
+
+import * as React from "react";
+import { cn } from "@/lib/utils";
+import { VariantProps, cva } from "class-variance-authority";
+const inputVariants = cva(
+  "bg-background-50 border border-background-300 text-background-900 sm:text-sm rounded-md focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5",
+  {
+    variants: {
+      h: {
+        sm: "h-8 text-sm",
+        md: "h-10 text-sm",
+        lg: "h-12 text-md",
+      },
+      variant: {
+        default: "",
+        destructive:
+          "border-destructive text-destructive focus:ring-destructive focus:border-destructive ",
+      },
+    },
+    defaultVariants: {
+      h: "md",
+      variant: "default",
+    },
+  }
+);
+export interface InputProps
+  extends React.InputHTMLAttributes<HTMLInputElement>,
+    VariantProps<typeof inputVariants> {}
+const Input = React.forwardRef<HTMLInputElement, InputProps>(
+  ({ className, h, type, variant, ...props }, ref) => {
+    return (
+      <input
+        type={type}
+        className={cn(inputVariants({ h, variant, className }))}
+        ref={ref}
+        {...props}
+      />
+    );
+  }
+);
+Input.displayName = "Input";
+export { Input };
+---
+Path: /src/components/ui/use-toast.ts
+
+"use client"
+import * as React from "react"
+import type {
+  ToastActionElement,
+  ToastProps,
+} from "@/components/ui/toast"
+const TOAST_LIMIT = 1
+const TOAST_REMOVE_DELAY = 1000000
+type ToasterToast = ToastProps & {
+  id: string
+  title?: React.ReactNode
+  description?: React.ReactNode
+  action?: ToastActionElement
+}
+const actionTypes = {
+  ADD_TOAST: "ADD_TOAST",
+  UPDATE_TOAST: "UPDATE_TOAST",
+  DISMISS_TOAST: "DISMISS_TOAST",
+  REMOVE_TOAST: "REMOVE_TOAST",
+} as const
+let count = 0
+function genId() {
+  count = (count + 1) % Number.MAX_SAFE_INTEGER
+  return count.toString()
+}
+type ActionType = typeof actionTypes
+type Action =
+  | {
+      type: ActionType["ADD_TOAST"]
+      toast: ToasterToast
+    }
+  | {
+      type: ActionType["UPDATE_TOAST"]
+      toast: Partial<ToasterToast>
+    }
+  | {
+      type: ActionType["DISMISS_TOAST"]
+      toastId?: ToasterToast["id"]
+    }
+  | {
+      type: ActionType["REMOVE_TOAST"]
+      toastId?: ToasterToast["id"]
+    }
+interface State {
+  toasts: ToasterToast[]
+}
+const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
+const addToRemoveQueue = (toastId: string) => {
+  if (toastTimeouts.has(toastId)) {
+    return
+  }
+  const timeout = setTimeout(() => {
+    toastTimeouts.delete(toastId)
+    dispatch({
+      type: "REMOVE_TOAST",
+      toastId: toastId,
+    })
+  }, TOAST_REMOVE_DELAY)
+  toastTimeouts.set(toastId, timeout)
+}
+export const reducer = (state: State, action: Action): State => {
+  switch (action.type) {
+    case "ADD_TOAST":
+      return {
+        ...state,
+        toasts: [action.toast, ...state.toasts].slice(0, TOAST_LIMIT),
+      }
+    case "UPDATE_TOAST":
+      return {
+        ...state,
+        toasts: state.toasts.map((t) =>
+          t.id === action.toast.id ? { ...t, ...action.toast } : t
+        ),
+      }
+    case "DISMISS_TOAST": {
+      const { toastId } = action
+      if (toastId) {
+        addToRemoveQueue(toastId)
+      } else {
+        state.toasts.forEach((toast) => {
+          addToRemoveQueue(toast.id)
+        })
+      }
+      return {
+        ...state,
+        toasts: state.toasts.map((t) =>
+          t.id === toastId || toastId === undefined
+            ? {
+                ...t,
+                open: false,
+              }
+            : t
+        ),
+      }
+    }
+    case "REMOVE_TOAST":
+      if (action.toastId === undefined) {
+        return {
+          ...state,
+          toasts: [],
+        }
+      }
+      return {
+        ...state,
+        toasts: state.toasts.filter((t) => t.id !== action.toastId),
+      }
+  }
+}
+const listeners: Array<(state: State) => void> = []
+let memoryState: State = { toasts: [] }
+function dispatch(action: Action) {
+  memoryState = reducer(memoryState, action)
+  listeners.forEach((listener) => {
+    listener(memoryState)
+  })
+}
+type Toast = Omit<ToasterToast, "id">
+function toast({ ...props }: Toast) {
+  const id = genId()
+  const update = (props: ToasterToast) =>
+    dispatch({
+      type: "UPDATE_TOAST",
+      toast: { ...props, id },
+    })
+  const dismiss = () => dispatch({ type: "DISMISS_TOAST", toastId: id })
+  dispatch({
+    type: "ADD_TOAST",
+    toast: {
+      ...props,
+      id,
+      open: true,
+      onOpenChange: (open) => {
+        if (!open) dismiss()
+      },
+    },
+  })
+  return {
+    id: id,
+    dismiss,
+    update,
+  }
+}
+function useToast() {
+  const [state, setState] = React.useState<State>(memoryState)
+  React.useEffect(() => {
+    listeners.push(setState)
+    return () => {
+      const index = listeners.indexOf(setState)
+      if (index > -1) {
+        listeners.splice(index, 1)
+      }
+    }
+  }, [state])
+  return {
+    ...state,
+    toast,
+    dismiss: (toastId?: string) => dispatch({ type: "DISMISS_TOAST", toastId }),
+  }
+}
+export { useToast, toast }
+---
+Path: /src/components/ui/badge.tsx
+
+import * as React from "react"
+import { cva, type VariantProps } from "class-variance-authority"
+import { cn } from "@/lib/utils"
+const badgeVariants = cva(
+  "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+  {
+    variants: {
+      variant: {
+        default:
+          "border-transparent bg-primary text-primary-foreground hover:bg-primary/80",
+        secondary:
+          "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        destructive:
+          "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
+        outline: "text-foreground",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  }
+)
+export interface BadgeProps
+  extends React.HTMLAttributes<HTMLDivElement>,
+    VariantProps<typeof badgeVariants> {}
+function Badge({ className, variant, ...props }: BadgeProps) {
+  return (
+    <div className={cn(badgeVariants({ variant }), className)} {...props} />
+  )
+}
+export { Badge, badgeVariants }
+---
+Path: /src/components/ui/toast.tsx
+
+"use client";
+import * as React from "react";
+import * as ToastPrimitives from "@radix-ui/react-toast";
+import { cva, type VariantProps } from "class-variance-authority";
+import { X } from "lucide-react";
+import { cn } from "@/lib/utils";
+const ToastProvider = ToastPrimitives.Provider;
+const ToastViewport = React.forwardRef<
+  React.ElementRef<typeof ToastPrimitives.Viewport>,
+  React.ComponentPropsWithoutRef<typeof ToastPrimitives.Viewport>
+>(({ className, ...props }, ref) => (
+  <ToastPrimitives.Viewport
+    ref={ref}
+    className={cn(
+      "fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]",
+      className
+    )}
+    {...props}
+  />
+));
+ToastViewport.displayName = ToastPrimitives.Viewport.displayName;
+const toastVariants = cva(
+  "group pointer-events-auto relative flex w-full items-center justify-between space-x-4 overflow-hidden rounded-md border p-6 pr-8 shadow-lg transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-top-full data-[state=open]:sm:slide-in-from-bottom-full",
+  {
+    variants: {
+      variant: {
+        default: "border bg-background text-foreground",
+        destructive:
+          "destructive group border-destructive bg-destructive text-destructive-foreground",
+        success:
+          "success group border-success bg-success text-success-foreground",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  }
+);
+const Toast = React.forwardRef<
+  React.ElementRef<typeof ToastPrimitives.Root>,
+  React.ComponentPropsWithoutRef<typeof ToastPrimitives.Root> &
+    VariantProps<typeof toastVariants>
+>(({ className, variant, ...props }, ref) => {
+  return (
+    <ToastPrimitives.Root
+      ref={ref}
+      className={cn(toastVariants({ variant }), className)}
+      {...props}
+    />
+  );
+});
+Toast.displayName = ToastPrimitives.Root.displayName;
+const ToastAction = React.forwardRef<
+  React.ElementRef<typeof ToastPrimitives.Action>,
+  React.ComponentPropsWithoutRef<typeof ToastPrimitives.Action>
+>(({ className, ...props }, ref) => (
+  <ToastPrimitives.Action
+    ref={ref}
+    className={cn(
+      "inline-flex h-8 shrink-0 items-center justify-center rounded-md border bg-transparent px-3 text-sm font-medium ring-offset-background transition-colors hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 group-[.destructive]:border-muted/40 group-[.destructive]:hover:border-destructive/30 group-[.destructive]:hover:bg-destructive group-[.destructive]:hover:text-destructive-foreground group-[.destructive]:focus:ring-destructive",
+      className
+    )}
+    {...props}
+  />
+));
+ToastAction.displayName = ToastPrimitives.Action.displayName;
+const ToastClose = React.forwardRef<
+  React.ElementRef<typeof ToastPrimitives.Close>,
+  React.ComponentPropsWithoutRef<typeof ToastPrimitives.Close>
+>(({ className, ...props }, ref) => (
+  <ToastPrimitives.Close
+    ref={ref}
+    className={cn(
+      "absolute right-2 top-2 rounded-md p-1 text-foreground/50 opacity-0 transition-opacity hover:text-foreground focus:opacity-100 focus:outline-none focus:ring-2 group-hover:opacity-100 group-[.destructive]:text-red-300 group-[.destructive]:hover:text-red-50 group-[.destructive]:focus:ring-red-400 group-[.destructive]:focus:ring-offset-red-600",
+      className
+    )}
+    toast-close=""
+    {...props}
+  >
+    <X className="h-4 w-4" />
+  </ToastPrimitives.Close>
+));
+ToastClose.displayName = ToastPrimitives.Close.displayName;
+const ToastTitle = React.forwardRef<
+  React.ElementRef<typeof ToastPrimitives.Title>,
+  React.ComponentPropsWithoutRef<typeof ToastPrimitives.Title>
+>(({ className, ...props }, ref) => (
+  <ToastPrimitives.Title
+    ref={ref}
+    className={cn("text-sm font-semibold", className)}
+    {...props}
+  />
+));
+ToastTitle.displayName = ToastPrimitives.Title.displayName;
+const ToastDescription = React.forwardRef<
+  React.ElementRef<typeof ToastPrimitives.Description>,
+  React.ComponentPropsWithoutRef<typeof ToastPrimitives.Description>
+>(({ className, ...props }, ref) => (
+  <ToastPrimitives.Description
+    ref={ref}
+    className={cn("text-sm opacity-90", className)}
+    {...props}
+  />
+));
+ToastDescription.displayName = ToastPrimitives.Description.displayName;
+type ToastProps = React.ComponentPropsWithoutRef<typeof Toast>;
+type ToastActionElement = React.ReactElement<typeof ToastAction>;
+export {
+  type ToastProps,
+  type ToastActionElement,
+  ToastProvider,
+  ToastViewport,
+  Toast,
+  ToastTitle,
+  ToastDescription,
+  ToastClose,
+  ToastAction,
+};
+---
+Path: /src/components/ui/skeleton.tsx
+
+import { cn } from "@/lib/utils"
+function Skeleton({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn("animate-pulse rounded-md bg-muted", className)}
+      {...props}
+    />
+  )
+}
+export { Skeleton }
+---
+Path: /src/components/ui/typography.tsx
+
+import { cn } from "@/lib/utils";
+import { Slot } from "@radix-ui/react-slot";
+import { VariantProps, cva } from "class-variance-authority";
+const typographyVariants = cva("text-foreground", {
+  variants: {
+    variant: {
+      display: "text-7xl",
+      h1: "text-6xl",
+      h2: "text-4xl",
+      h3: "text-2xl",
+      h4: "text-xl",
+      h5: "text-lg",
+      h6: "text-base",
+      lead: "text-lg",
+      "body-lg": "text-lg",
+      "body-md": "text-base",
+      "body-sm": "text-sm",
+      "caption-1": "text-lg",
+      "caption-2": "text-base",
+      "caption-3": "text-sm",
+      "caption-4": "text-xs",
+    },
+    weight: {
+      regular: "font-normal",
+      medium: "font-medium",
+    },
+  },
+  defaultVariants: {
+    variant: "body-md",
+    weight: "regular",
+  },
+});
+export interface TypographyProps
+  extends React.HtmlHTMLAttributes<HTMLElement>,
+    VariantProps<typeof typographyVariants> {
+  asChild?: boolean;
+}
+export default function Typography({
+  variant,
+  weight,
+  className,
+  asChild,
+  ...props
+}: TypographyProps) {
+  let Comp = asChild ? Slot : "p";
+  if (!asChild)
+    switch (variant) {
+      case "display":
+        Comp = "h1";
+        break;
+      case "h1":
+        Comp = "h1";
+        break;
+      case "h2":
+        Comp = "h2";
+        break;
+      case "h3":
+        Comp = "h3";
+        break;
+      case "h4":
+        Comp = "h4";
+        break;
+      case "h5":
+        Comp = "h5";
+        break;
+      case "h6":
+        Comp = "h6";
+        break;
+      case "lead":
+        Comp = "p";
+        break;
+      case "body-lg":
+        Comp = "p";
+        break;
+      case "body-md":
+        Comp = "p";
+        break;
+      case "body-sm":
+        Comp = "p";
+        break;
+      case "caption-1":
+        Comp = "p";
+        break;
+      case "caption-2":
+        Comp = "p";
+        break;
+      case "caption-3":
+        Comp = "p";
+        break;
+      case "caption-4":
+        Comp = "p";
+        break;
+    }
+  return (
+    <Comp
+      className={cn(typographyVariants({ variant, weight, className }))}
+      {...props}
+    />
+  );
+}
+---
+Path: /src/components/ui/breadcrumb.tsx
+
+import * as React from "react"
+import { Slot } from "@radix-ui/react-slot"
+import { ChevronRight, MoreHorizontal } from "lucide-react"
+import { cn } from "@/lib/utils"
+const Breadcrumb = React.forwardRef<
+  HTMLElement,
+  React.ComponentPropsWithoutRef<"nav"> & {
+    separator?: React.ReactNode
+  }
+>(({ ...props }, ref) => <nav ref={ref} aria-label="breadcrumb" {...props} />)
+Breadcrumb.displayName = "Breadcrumb"
+const BreadcrumbList = React.forwardRef<
+  HTMLOListElement,
+  React.ComponentPropsWithoutRef<"ol">
+>(({ className, ...props }, ref) => (
+  <ol
+    ref={ref}
+    className={cn(
+      "flex flex-wrap items-center gap-1.5 break-words text-sm text-muted-foreground sm:gap-2.5",
+      className
+    )}
+    {...props}
+  />
+))
+BreadcrumbList.displayName = "BreadcrumbList"
+const BreadcrumbItem = React.forwardRef<
+  HTMLLIElement,
+  React.ComponentPropsWithoutRef<"li">
+>(({ className, ...props }, ref) => (
+  <li
+    ref={ref}
+    className={cn("inline-flex items-center gap-1.5", className)}
+    {...props}
+  />
+))
+BreadcrumbItem.displayName = "BreadcrumbItem"
+const BreadcrumbLink = React.forwardRef<
+  HTMLAnchorElement,
+  React.ComponentPropsWithoutRef<"a"> & {
+    asChild?: boolean
+  }
+>(({ asChild, className, ...props }, ref) => {
+  const Comp = asChild ? Slot : "a"
+  return (
+    <Comp
+      ref={ref}
+      className={cn("transition-colors hover:text-foreground", className)}
+      {...props}
+    />
+  )
+})
+BreadcrumbLink.displayName = "BreadcrumbLink"
+const BreadcrumbPage = React.forwardRef<
+  HTMLSpanElement,
+  React.ComponentPropsWithoutRef<"span">
+>(({ className, ...props }, ref) => (
+  <span
+    ref={ref}
+    role="link"
+    aria-disabled="true"
+    aria-current="page"
+    className={cn("font-normal text-foreground", className)}
+    {...props}
+  />
+))
+BreadcrumbPage.displayName = "BreadcrumbPage"
+const BreadcrumbSeparator = ({
+  children,
+  className,
+  ...props
+}: React.ComponentProps<"li">) => (
+  <li
+    role="presentation"
+    aria-hidden="true"
+    className={cn("[&>svg]:size-3.5", className)}
+    {...props}
+  >
+    {children ?? <ChevronRight />}
+  </li>
+)
+BreadcrumbSeparator.displayName = "BreadcrumbSeparator"
+const BreadcrumbEllipsis = ({
+  className,
+  ...props
+}: React.ComponentProps<"span">) => (
+  <span
+    role="presentation"
+    aria-hidden="true"
+    className={cn("flex h-9 w-9 items-center justify-center", className)}
+    {...props}
+  >
+    <MoreHorizontal className="h-4 w-4" />
+    <span className="sr-only">More</span>
+  </span>
+)
+BreadcrumbEllipsis.displayName = "BreadcrumbElipssis"
+export {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+  BreadcrumbEllipsis,
+}
+---
+Path: /src/components/ui/avatar.tsx
+
+"use client"
+import * as React from "react"
+import * as AvatarPrimitive from "@radix-ui/react-avatar"
+import { cn } from "@/lib/utils"
+const Avatar = React.forwardRef<
+  React.ElementRef<typeof AvatarPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Root>
+>(({ className, ...props }, ref) => (
+  <AvatarPrimitive.Root
+    ref={ref}
+    className={cn(
+      "relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full",
+      className
+    )}
+    {...props}
+  />
+))
+Avatar.displayName = AvatarPrimitive.Root.displayName
+const AvatarImage = React.forwardRef<
+  React.ElementRef<typeof AvatarPrimitive.Image>,
+  React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Image>
+>(({ className, ...props }, ref) => (
+  <AvatarPrimitive.Image
+    ref={ref}
+    className={cn("aspect-square h-full w-full", className)}
+    {...props}
+  />
+))
+AvatarImage.displayName = AvatarPrimitive.Image.displayName
+const AvatarFallback = React.forwardRef<
+  React.ElementRef<typeof AvatarPrimitive.Fallback>,
+  React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Fallback>
+>(({ className, ...props }, ref) => (
+  <AvatarPrimitive.Fallback
+    ref={ref}
+    className={cn(
+      "flex h-full w-full items-center justify-center rounded-full bg-muted",
+      className
+    )}
+    {...props}
+  />
+))
+AvatarFallback.displayName = AvatarPrimitive.Fallback.displayName
+export { Avatar, AvatarImage, AvatarFallback }
+---
+Path: /src/components/ui/dropdown-menu.tsx
+
+"use client"
+import * as React from "react"
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu"
+import { Check, ChevronRight, Circle } from "lucide-react"
+import { cn } from "@/lib/utils"
+const DropdownMenu = DropdownMenuPrimitive.Root
+const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger
+const DropdownMenuGroup = DropdownMenuPrimitive.Group
+const DropdownMenuPortal = DropdownMenuPrimitive.Portal
+const DropdownMenuSub = DropdownMenuPrimitive.Sub
+const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup
+const DropdownMenuSubTrigger = React.forwardRef<
+  React.ElementRef<typeof DropdownMenuPrimitive.SubTrigger>,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubTrigger> & {
+    inset?: boolean
+  }
+>(({ className, inset, children, ...props }, ref) => (
+  <DropdownMenuPrimitive.SubTrigger
+    ref={ref}
+    className={cn(
+      "flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent data-[state=open]:bg-accent",
+      inset && "pl-8",
+      className
+    )}
+    {...props}
+  >
+    {children}
+    <ChevronRight className="ml-auto h-4 w-4" />
+  </DropdownMenuPrimitive.SubTrigger>
+))
+DropdownMenuSubTrigger.displayName =
+  DropdownMenuPrimitive.SubTrigger.displayName
+const DropdownMenuSubContent = React.forwardRef<
+  React.ElementRef<typeof DropdownMenuPrimitive.SubContent>,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubContent>
+>(({ className, ...props }, ref) => (
+  <DropdownMenuPrimitive.SubContent
+    ref={ref}
+    className={cn(
+      "z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+      className
+    )}
+    {...props}
+  />
+))
+DropdownMenuSubContent.displayName =
+  DropdownMenuPrimitive.SubContent.displayName
+const DropdownMenuContent = React.forwardRef<
+  React.ElementRef<typeof DropdownMenuPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
+>(({ className, sideOffset = 4, ...props }, ref) => (
+  <DropdownMenuPrimitive.Portal>
+    <DropdownMenuPrimitive.Content
+      ref={ref}
+      sideOffset={sideOffset}
+      className={cn(
+        "z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        className
+      )}
+      {...props}
+    />
+  </DropdownMenuPrimitive.Portal>
+))
+DropdownMenuContent.displayName = DropdownMenuPrimitive.Content.displayName
+const DropdownMenuItem = React.forwardRef<
+  React.ElementRef<typeof DropdownMenuPrimitive.Item>,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item> & {
+    inset?: boolean
+  }
+>(({ className, inset, ...props }, ref) => (
+  <DropdownMenuPrimitive.Item
+    ref={ref}
+    className={cn(
+      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      inset && "pl-8",
+      className
+    )}
+    {...props}
+  />
+))
+DropdownMenuItem.displayName = DropdownMenuPrimitive.Item.displayName
+const DropdownMenuCheckboxItem = React.forwardRef<
+  React.ElementRef<typeof DropdownMenuPrimitive.CheckboxItem>,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.CheckboxItem>
+>(({ className, children, checked, ...props }, ref) => (
+  <DropdownMenuPrimitive.CheckboxItem
+    ref={ref}
+    className={cn(
+      "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      className
+    )}
+    checked={checked}
+    {...props}
+  >
+    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+      <DropdownMenuPrimitive.ItemIndicator>
+        <Check className="h-4 w-4" />
+      </DropdownMenuPrimitive.ItemIndicator>
+    </span>
+    {children}
+  </DropdownMenuPrimitive.CheckboxItem>
+))
+DropdownMenuCheckboxItem.displayName =
+  DropdownMenuPrimitive.CheckboxItem.displayName
+const DropdownMenuRadioItem = React.forwardRef<
+  React.ElementRef<typeof DropdownMenuPrimitive.RadioItem>,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.RadioItem>
+>(({ className, children, ...props }, ref) => (
+  <DropdownMenuPrimitive.RadioItem
+    ref={ref}
+    className={cn(
+      "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      className
+    )}
+    {...props}
+  >
+    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+      <DropdownMenuPrimitive.ItemIndicator>
+        <Circle className="h-2 w-2 fill-current" />
+      </DropdownMenuPrimitive.ItemIndicator>
+    </span>
+    {children}
+  </DropdownMenuPrimitive.RadioItem>
+))
+DropdownMenuRadioItem.displayName = DropdownMenuPrimitive.RadioItem.displayName
+const DropdownMenuLabel = React.forwardRef<
+  React.ElementRef<typeof DropdownMenuPrimitive.Label>,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Label> & {
+    inset?: boolean
+  }
+>(({ className, inset, ...props }, ref) => (
+  <DropdownMenuPrimitive.Label
+    ref={ref}
+    className={cn(
+      "px-2 py-1.5 text-sm font-semibold",
+      inset && "pl-8",
+      className
+    )}
+    {...props}
+  />
+))
+DropdownMenuLabel.displayName = DropdownMenuPrimitive.Label.displayName
+const DropdownMenuSeparator = React.forwardRef<
+  React.ElementRef<typeof DropdownMenuPrimitive.Separator>,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Separator>
+>(({ className, ...props }, ref) => (
+  <DropdownMenuPrimitive.Separator
+    ref={ref}
+    className={cn("-mx-1 my-1 h-px bg-muted", className)}
+    {...props}
+  />
+))
+DropdownMenuSeparator.displayName = DropdownMenuPrimitive.Separator.displayName
+const DropdownMenuShortcut = ({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLSpanElement>) => {
+  return (
+    <span
+      className={cn("ml-auto text-xs tracking-widest opacity-60", className)}
+      {...props}
+    />
+  )
+}
+DropdownMenuShortcut.displayName = "DropdownMenuShortcut"
+export {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuCheckboxItem,
+  DropdownMenuRadioItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuGroup,
+  DropdownMenuPortal,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuRadioGroup,
+}
+---
+Path: /src/components/ui/card.tsx
+
+import * as React from "react"
+import { cn } from "@/lib/utils"
+const Card = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn(
+      "rounded-lg border bg-card text-card-foreground shadow-sm",
+      className
+    )}
+    {...props}
+  />
+))
+Card.displayName = "Card"
+const CardHeader = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn("flex flex-col space-y-1.5 p-6", className)}
+    {...props}
+  />
+))
+CardHeader.displayName = "CardHeader"
+const CardTitle = React.forwardRef<
+  HTMLParagraphElement,
+  React.HTMLAttributes<HTMLHeadingElement>
+>(({ className, ...props }, ref) => (
+  <h3
+    ref={ref}
+    className={cn(
+      "text-2xl font-semibold leading-none tracking-tight",
+      className
+    )}
+    {...props}
+  />
+))
+CardTitle.displayName = "CardTitle"
+const CardDescription = React.forwardRef<
+  HTMLParagraphElement,
+  React.HTMLAttributes<HTMLParagraphElement>
+>(({ className, ...props }, ref) => (
+  <p
+    ref={ref}
+    className={cn("text-sm text-muted-foreground", className)}
+    {...props}
+  />
+))
+CardDescription.displayName = "CardDescription"
+const CardContent = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div ref={ref} className={cn("p-6 pt-0", className)} {...props} />
+))
+CardContent.displayName = "CardContent"
+const CardFooter = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn("flex items-center p-6 pt-0", className)}
+    {...props}
+  />
+))
+CardFooter.displayName = "CardFooter"
+export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent }
+---
+Path: /src/components/ui/separator.tsx
+
+"use client"
+import * as React from "react"
+import * as SeparatorPrimitive from "@radix-ui/react-separator"
+import { cn } from "@/lib/utils"
+const Separator = React.forwardRef<
+  React.ElementRef<typeof SeparatorPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof SeparatorPrimitive.Root>
+>(
+  (
+    { className, orientation = "horizontal", decorative = true, ...props },
+    ref
+  ) => (
+    <SeparatorPrimitive.Root
+      ref={ref}
+      decorative={decorative}
+      orientation={orientation}
+      className={cn(
+        "shrink-0 bg-border",
+        orientation === "horizontal" ? "h-[1px] w-full" : "h-full w-[1px]",
+        className
+      )}
+      {...props}
+    />
+  )
+)
+Separator.displayName = SeparatorPrimitive.Root.displayName
+export { Separator }
+---
+Path: /src/components/ui/toaster.tsx
+
+"use client"
+import {
+  Toast,
+  ToastClose,
+  ToastDescription,
+  ToastProvider,
+  ToastTitle,
+  ToastViewport,
+} from "@/components/ui/toast"
+import { useToast } from "@/components/ui/use-toast"
+export function Toaster() {
+  const { toasts } = useToast()
+  return (
+    <ToastProvider>
+      {toasts.map(function ({ id, title, description, action, ...props }) {
+        return (
+          <Toast key={id} {...props}>
+            <div className="grid gap-1">
+              {title && <ToastTitle>{title}</ToastTitle>}
+              {description && (
+                <ToastDescription>{description}</ToastDescription>
+              )}
+            </div>
+            {action}
+            <ToastClose />
+          </Toast>
+        )
+      })}
+      <ToastViewport />
+    </ToastProvider>
+  )
+}
+---
+Path: /src/components/ui/table.tsx
+
+import * as React from "react"
+import { cn } from "@/lib/utils"
+const Table = React.forwardRef<
+  HTMLTableElement,
+  React.HTMLAttributes<HTMLTableElement>
+>(({ className, ...props }, ref) => (
+  <div className="relative w-full overflow-auto">
+    <table
+      ref={ref}
+      className={cn("w-full caption-bottom text-sm", className)}
+      {...props}
+    />
+  </div>
+))
+Table.displayName = "Table"
+const TableHeader = React.forwardRef<
+  HTMLTableSectionElement,
+  React.HTMLAttributes<HTMLTableSectionElement>
+>(({ className, ...props }, ref) => (
+  <thead ref={ref} className={cn("[&_tr]:border-b", className)} {...props} />
+))
+TableHeader.displayName = "TableHeader"
+const TableBody = React.forwardRef<
+  HTMLTableSectionElement,
+  React.HTMLAttributes<HTMLTableSectionElement>
+>(({ className, ...props }, ref) => (
+  <tbody
+    ref={ref}
+    className={cn("[&_tr:last-child]:border-0", className)}
+    {...props}
+  />
+))
+TableBody.displayName = "TableBody"
+const TableFooter = React.forwardRef<
+  HTMLTableSectionElement,
+  React.HTMLAttributes<HTMLTableSectionElement>
+>(({ className, ...props }, ref) => (
+  <tfoot
+    ref={ref}
+    className={cn(
+      "border-t bg-muted/50 font-medium [&>tr]:last:border-b-0",
+      className
+    )}
+    {...props}
+  />
+))
+TableFooter.displayName = "TableFooter"
+const TableRow = React.forwardRef<
+  HTMLTableRowElement,
+  React.HTMLAttributes<HTMLTableRowElement>
+>(({ className, ...props }, ref) => (
+  <tr
+    ref={ref}
+    className={cn(
+      "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
+      className
+    )}
+    {...props}
+  />
+))
+TableRow.displayName = "TableRow"
+const TableHead = React.forwardRef<
+  HTMLTableCellElement,
+  React.ThHTMLAttributes<HTMLTableCellElement>
+>(({ className, ...props }, ref) => (
+  <th
+    ref={ref}
+    className={cn(
+      "h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0",
+      className
+    )}
+    {...props}
+  />
+))
+TableHead.displayName = "TableHead"
+const TableCell = React.forwardRef<
+  HTMLTableCellElement,
+  React.TdHTMLAttributes<HTMLTableCellElement>
+>(({ className, ...props }, ref) => (
+  <td
+    ref={ref}
+    className={cn("p-4 align-middle [&:has([role=checkbox])]:pr-0", className)}
+    {...props}
+  />
+))
+TableCell.displayName = "TableCell"
+const TableCaption = React.forwardRef<
+  HTMLTableCaptionElement,
+  React.HTMLAttributes<HTMLTableCaptionElement>
+>(({ className, ...props }, ref) => (
+  <caption
+    ref={ref}
+    className={cn("mt-4 text-sm text-muted-foreground", className)}
+    {...props}
+  />
+))
+TableCaption.displayName = "TableCaption"
+export {
+  Table,
+  TableHeader,
+  TableBody,
+  TableFooter,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableCaption,
+}
+---
+Path: /src/components/logo/logo.tsx
+
+import { cn } from "@/lib/utils";
+import { VariantProps, cva } from "class-variance-authority";
+const logoVariants = cva("", {
+  variants: {
+    variant: {
+      primary: "text-primary",
+      white: "text-white",
+      black: "text-black",
+    },
+    size: {
+      xs: "size-6",
+      sm: "size-10",
+      md: "size-16",
+      lg: "size-24",
+      xl: "size-32",
+    },
+  },
+  defaultVariants: {
+    variant: "primary",
+    size: "md",
+  },
+});
+export interface LogoProps
+  extends React.SVGAttributes<HTMLOrSVGElement>,
+    VariantProps<typeof logoVariants> {}
+export default function Logo({
+  variant,
+  size,
+  className,
+  ...props
+}: LogoProps) {
+  return (
+    <>
+      {}
+      <svg
+        xmlns="http:
+        xmlnsXlink="http:
+        x="0px"
+        y="0px"
+        viewBox="0 70 515 320"
+        xmlSpace="preserve"
+        fill="currentColor"
+        {...props}
+        className={cn(logoVariants({ variant, size, className }))}
+      >
+        <path d="M494.508 176c0 8.844-7.18 16-16 16-8.047 0-14.641-5.953-15.766-13.691C457.93 158.719 438.867 144 416 144c-26.516 0-48 19.703-48 44.004 0 17.766 11.562 32.969 28.086 39.914l-.078.215 47.18 15.516C482.969 254.391 512 288.078 512 328.008 512 376.594 469.023 416 416 416c-39 0-72.281-21.43-87.312-52.031-.836-1.086-1.586-2.25-2.133-3.57l-64.117-154.766-.094.039C244.016 160.02 201.523 128 151.992 128 85.723 128 32 185.309 32 256c0 70.688 53.723 128 119.992 128 20.496 0 39.773-5.508 56.648-15.164l.02.016c2.211-1.141 4.672-1.859 7.332-1.859 8.844 0 15.996 7.172 15.996 16 0 5.82-3.141 10.82-7.754 13.633l.074.133C202.801 409.039 178.172 416 151.992 416 68.055 416 0 344.359 0 256S68.055 96 151.992 96c62.176 0 115.586 39.352 139.109 95.613.234.445.523.852.719 1.316l64.133 154.844.195-.078C365.266 368.891 388.578 384 416 384c35.352 0 64-25.078 64-55.992 0-24.062-17.414-44.445-41.758-52.383-.211-.055-.422-.055-.641-.133l-45.789-15.055c-.031-.016-.055 0-.094-.016l-7.312-2.406c-1.32-.422-2.5-1.047-3.609-1.766a81.805 81.805 0 0 1-10.258-5.742c.062-.016.102-.07.156-.094-12.977-8.516-23.195-20.52-29.094-34.598-.133-.293-.227-.602-.344-.895a69.008 69.008 0 0 1-2.406-7.078c-.211-.734-.391-1.434-.586-2.172a76.83 76.83 0 0 1-1.336-6.633c-.117-.68-.25-1.375-.328-2.074-.367-2.949-.602-5.914-.602-8.961C336 146.016 371.82 112 416 112c39.023 0 71.445 26.551 78.523 61.672l-.25.039c.118.758.235 1.512.235 2.289zM272 336c8.844 0 16 7.156 16 16s-7.156 16-16 16-16-7.156-16-16 7.156-16 16-16z" />
+      </svg>
+    </>
+  );
+}
+---
+Path: /src/components/navigation/navbar-authenticated.tsx
+
+"use client";
+import { Button } from "../ui/button";
+import { useUserStore } from "@/lib/store/user";
+import { useRouter } from "next/navigation";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuItem,
+} from "../ui/dropdown-menu";
+import Link from "next/link";
+import {
+  Bell,
+  Info,
+  LayoutDashboard,
+  LogOut,
+  Search,
+  Settings,
+} from "lucide-react";
+import { createClient } from "@/lib/utils/supabase/client";
+import { Input } from "../ui/input";
+import { Avatar } from "../ui/avatar";
+import Image from "next/image";
+import { useProfileStore } from "@/lib/store/profile";
+export default function NavbarAuthenticated() {
+  const navigation = useRouter();
+  const setLoading = useUserStore((state) => state.setLoading);
+  const safeProfile = useProfileStore((state) => state.safeProfile);
+  async function signOut() {
+    setLoading(true);
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    navigation.refresh();
+    navigation.push("/");
+  }
+  return (
+    <nav className="flex items-center justify-between p-2 pr-4 bg-background border rounded-full">
+      <div className="flex-1 max-w-xl">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#2B3674] size-5" />
+          <Input
+            type="text"
+            placeholder="Search"
+            className="pl-10 pr-4 py-2 w-full rounded-full bg-[#F4F7FE] focus:border-blue-500 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+          />
+        </div>
+      </div>
+      <div className="flex items-center space-x-4 ml-2">
+        <Button variant="ghost" size="icon" className="rounded-full">
+          <Bell className="h-5 w-5 text-[#A3AED0]" />
+        </Button>
+        <Button variant="ghost" size="icon" className="rounded-full">
+          <Info className="h-5 w-5 text-[#A3AED0]" />
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger>
+            <Avatar className="size-9 bg-slate-500">
+              <Image
+                src="/images/avatar.png"
+                alt="avatar"
+                width={50}
+                height={50}
+              />
+            </Avatar>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>{safeProfile.email}</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>
+              <Link
+                className="flex items-center justify-between w-full"
+                href="/dashboard"
+              >
+                Dashboard <LayoutDashboard size={16} />
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <Link
+                className="flex items-center justify-between w-full"
+                href="/settings"
+              >
+                Settings <Settings size={16} />
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="cursor-pointer group"
+              onClick={signOut}
+            >
+              <span className="flex group-hover:text-destructive items-center justify-between w-full">
+                Logout
+                <LogOut size={16} />
+              </span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </nav>
+  );
+}
+---
+Path: /src/components/navigation/navbar-check-authenticated.tsx
+
+"use client";
+import NavBarUnauthenticated from "./navbar-unauthenticated";
+import NavbarAuthenticated from "./navbar-authenticated";
+import { useUserStore } from "@/lib/store/user";
+import { useProfileStore } from "@/lib/store/profile";
+export default function NavbarCheckAuthenticated() {
+  const { user, loading } = useUserStore();
+  const profileLoading = useProfileStore((state) => state.loading);
+  return (
+    <>
+      {!user ||
+        (profileLoading && (
+          <NavBarUnauthenticated loading={loading || profileLoading} />
+        ))}
+      {user && !profileLoading && <NavbarAuthenticated />}
+    </>
+  );
+}
+---
+Path: /src/components/navigation/navbar.tsx
+
+import Link from "next/link";
+import Logo from "@/components/logo/logo";
+import NavBarLink from "./navbar-link";
+import NavBarToggle from "./navbar-toggle";
+import { Suspense } from "react";
+import NavBarUnauthenticated from "./navbar-unauthenticated";
+import NavbarCheckAuthenticated from "./navbar-check-authenticated";
+import { ModeToggle } from "../theme/mode-toggle";
+const links = [
+  {
+    title: "Home",
+    href: "/",
+  },
+] as const;
+export default async function NavBar({ displayDesignSystemLink = false }) {
+  return (
+    <nav className="bg-background fixed w-full z-20 top-0 start-0 shadow-md">
+      <div className="max-w-screen-xl flex flex-wrap items-center justify-between mx-auto p-4 md:px-7">
+        <div className="flex items-center gap-4">
+          <Link
+            href="/"
+            className="flex items-center space-x-2 rtl:space-x-reverse"
+          >
+            <Logo size="sm" />
+            <span className="self-center text-2xl font-semibold whitespace-nowrap mt-1">
+              One Learn
+            </span>
+          </Link>
+          <ModeToggle />
+        </div>
+        <div className="md:order-2 flex gap-3">
+          {}
+          <NavbarCheckAuthenticated />
+          <NavBarToggle />
+        </div>
+        <div
+          className="items-center justify-between hidden w-full md:flex md:w-auto md:order-1"
+          id="navbar-sticky"
+        >
+          <ul className="flex flex-col p-4 md:p-0 mt-4 font-medium md:space-x-8 rtl:space-x-reverse md:flex-row md:mt-0 md:border-0 max-md:gap-2">
+            {links.map((link) => (
+              <li key={link.title}>
+                <NavBarLink href={link.href} title={link.title} />
+              </li>
+            ))}
+            {displayDesignSystemLink && (
+              <li>
+                <NavBarLink href="/design-system" title="Design system" />
+              </li>
+            )}
+          </ul>
+        </div>
+      </div>
+    </nav>
+  );
+}
+---
+Path: /src/components/navigation/navbar-unauthenticated.tsx
+
+import Link from "next/link";
+import { buttonVariants } from "../ui/button";
+import { cn } from "@/lib/utils";
+import Spinner from "../ui/spinner";
+export default function NavBarUnauthenticated({ loading = false }) {
+  return (
+    <div
+      className={cn("flex gap-3 md:space-x-0 rtl:space-x-reverse relative", {
+      })}
+    >
+      <Link
+        href="/login"
+        className={cn(buttonVariants({ variant: "primary", size: "md" }))}
+      >
+        Sign in
+      </Link>
+      {}
+      {loading && <Spinner size="sm" className="absolute top-2 -left-10" />}
+    </div>
+  );
+}
+---
+Path: /src/components/navigation/CustomBreadCrumb.tsx
+
+"use client";
+import { usePathname } from "next/navigation";
+import Link from "next/link";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import { Fragment } from "react";
+const nameMap: any = {
+  home: "Home",
+  dashboard: "Overview",
+  settings: "Settings",
+  profile: "Profile",
+};
+export function CustomBreadcrumb() {
+  const pathname = usePathname();
+  const pathSegments = pathname.split("/").filter((segment) => segment);
+  function getTitle(segment: string) {
+    return (
+      nameMap[segment] || segment.charAt(0).toUpperCase() + segment.slice(1)
+    );
+  }
+  return (
+    <Breadcrumb>
+      <BreadcrumbList className="gap-1 sm:gap-1 text-[14px] font-medium">
+        <BreadcrumbItem>
+          <BreadcrumbLink asChild>
+            <Link href="/">One Learn</Link>
+          </BreadcrumbLink>
+        </BreadcrumbItem>
+        {pathSegments.map((segment, index) => {
+          const href = `/${pathSegments.slice(0, index + 1).join("/")}`;
+          const isLast = index === pathSegments.length - 1;
+          return (
+            <Fragment key={segment}>
+              <BreadcrumbSeparator>/</BreadcrumbSeparator>
+              <BreadcrumbItem key={segment}>
+                {isLast ? (
+                  <span>{getTitle(segment)}</span>
+                ) : (
+                  <BreadcrumbLink asChild>
+                    <Link href={href}>{getTitle(segment)}</Link>
+                  </BreadcrumbLink>
+                )}
+              </BreadcrumbItem>{" "}
+            </Fragment>
+          );
+        })}
+      </BreadcrumbList>
+    </Breadcrumb>
+  );
+}
+---
+Path: /src/components/navigation/navbar-link.tsx
+
+"use client";
+import clsx from "clsx";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+export default function NavBarLink({
+  href,
+  title,
+}: {
+  href: string;
+  title: string;
+}) {
+  const pathname = usePathname();
+  return (
+    <Link
+      href={href}
+      className={clsx(
+        "block py-2 px-3 text-foreground rounded  hover:bg-primary hover:text-white md:hover:bg-transparent md:hover:text-primary md:p-0 ",
+        {
+          "bg-primary md:bg-transparent text-white md:text-primary md:underline":
+            pathname === href,
+        }
+      )}
+      aria-current={pathname === href ? "page" : undefined}
+    >
+      {title}
+    </Link>
+  );
+}
+---
+Path: /src/components/navigation/navbar-toggle.tsx
+
+"use client";
+import { initDropdowns } from "flowbite";
+import { useEffect } from "react";
+export default function NavBarToggle() {
+  useEffect(() => {
+    initDropdowns();
+  });
+  return (
+    <button
+      data-collapse-toggle="navbar-sticky"
+      type="button"
+      className="inline-flex items-center p-2 w-10 h-10 justify-center text-sm text-gray-500 rounded-lg md:hidden hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-200 dark:text-gray-400 dark:hover:bg-gray-700 dark:focus:ring-gray-600"
+      aria-controls="navbar-sticky"
+      aria-expanded="false"
+    >
+      <span className="sr-only">Open main menu</span>
+      <svg
+        className="w-5 h-5"
+        aria-hidden="true"
+        xmlns="http:
+        fill="none"
+        viewBox="0 0 17 14"
+      >
+        <path
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M1 1h15M1 7h15M1 13h15"
+        />
+      </svg>
+    </button>
+  );
+}
+---
+Path: /src/components/charts/CustomAreaChart.tsx
+
+import React from "react";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+type ChostomAreaChartDataType = {
+  name: string;
+  value: number;
+};
+type ChostomAreaChartProps = {
+  data: ChostomAreaChartDataType[];
+  color?: string;
+};
+const CustomAreaChart = ({
+  data,
+  color = "var(--primary)",
+}: ChostomAreaChartProps) => {
+  return (
+    <ResponsiveContainer width="100%" minHeight={200}>
+      <AreaChart
+        data={data}
+        margin={{ top: 20, right: 20, left: -20, bottom: 0 }}
+      >
+        <defs>
+          <linearGradient id="colorUv" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor={color} stopOpacity={0.8} />
+            <stop offset="95%" stopColor={color} stopOpacity={0.2} />
+          </linearGradient>
+        </defs>
+        <XAxis dataKey="name" stroke="hsl(var(--muted-foreground) / 50%)" />
+        <YAxis stroke="hsl(var(--muted-foreground) / 70%)" />
+        <CartesianGrid
+          stroke="hsl(var(--muted-foreground) / 20%)"
+          strokeDasharray="3 3"
+        />
+        <Tooltip />
+        <Area
+          type="monotone"
+          dataKey="value"
+          stroke={color}
+          strokeOpacity={0}
+          width={10}
+          fill="url(#colorUv)"
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  );
+};
+export default CustomAreaChart;
+---
+Path: /src/components/charts/CustomRadarChart.tsx
+
+import React from "react";
+import {
+  Legend,
+  PolarAngleAxis,
+  PolarGrid,
+  PolarRadiusAxis,
+  Radar,
+  RadarChart,
+  ResponsiveContainer,
+  Tooltip,
+} from "recharts";
+const data = [
+  {
+    name: "Listening",
+    value: 120,
+  },
+  {
+    name: "Ortography",
+    value: 98,
+  },
+  {
+    name: "Reading",
+    value: 86,
+  },
+  {
+    name: "Writing",
+    value: 99,
+  },
+  {
+    name: "Speaking",
+    value: 85,
+  },
+  {
+    name: "Grammar",
+    value: 65,
+  },
+];
+const CustomRadarChart = () => {
+  return (
+    <ResponsiveContainer width="100%" minHeight={200}>
+      <RadarChart cx="50%" cy="50%" outerRadius="80%" data={data}>
+        <PolarGrid stroke="hsl(var(--muted-foreground) / 20%)" />
+        <PolarAngleAxis dataKey="name" />
+        <Radar
+          name=""
+          dataKey="value"
+          stroke="hsl(var(--primary) / 50%)"
+          fill="hsl(var(--primary))"
+          fillOpacity={0.3}
+        />
+        {}
+        <Tooltip />
+      </RadarChart>
+    </ResponsiveContainer>
+  );
+};
+export default CustomRadarChart;
+---
+Path: /src/components/charts/CustomBarChart.tsx
+
+import React from "react";
+import {
+  ResponsiveContainer,
+  BarChart,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Bar,
+} from "recharts";
+import Typography from "../ui/typography";
+type ChostomBarChartDataType = {
+  name: string;
+  value: number;
+};
+type CustomBarChartProps = {
+  data: ChostomBarChartDataType[];
+  barColor?: string;
+};
+const CustomBarChart = ({
+  data,
+  barColor = "hsl(var(--primary))",
+}: CustomBarChartProps) => {
+  return (
+    <ResponsiveContainer width="100%" minHeight={200}>
+      <BarChart
+        data={data}
+        margin={{ top: 20, right: 20, left: -20, bottom: 0 }}
+      >
+        <CartesianGrid strokeDasharray="3 3" />
+        <XAxis dataKey="name" stroke="hsl(var(--muted-foreground) / 50%)" />
+        <YAxis stroke="hsl(var(--muted-foreground) / 50%)" />
+        <Tooltip
+          labelFormatter={(value) => {
+            return `Daysss: ${value}`;
+          }}
+          content={({ payload }) => {
+            return (
+              <div className="bg-background p-4 rounded-lg">
+                {payload?.map((entry) => {
+                  return (
+                    <div key={entry.name}>
+                      <Typography variant="body-sm">
+                        Day: {entry.payload.name}
+                      </Typography>
+                      <Typography variant="body-sm">
+                        New users: {entry.value}
+                      </Typography>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          }}
+          cursor={{
+            fill: "hsl(var(--muted-foreground) / 10%)",
+          }}
+        />
+        {}
+        <Bar
+          barSize={20}
+          radius={[1000, 1000, 0, 0]}
+          dataKey="value"
+          fill={barColor}
+        />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+};
+export default CustomBarChart;
+---
+Path: /src/components/auth/AuthProvider.tsx
+
+"use client";
+import { useUserStore } from "@/lib/store/user";
+import { createClient } from "@/lib/utils/supabase/client";
+import { useEffect } from "react";
+const AuthProvider = () => {
+  const setUser = useUserStore((state) => state.setUser);
+  useEffect(() => {
+    const supabase = createClient();
+    const readUser = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      setUser(user);
+    };
+    readUser();
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        const user = session?.user || null;
+        setUser(user);
+      }
+    );
+    return () => {
+      listener?.subscription.unsubscribe();
+    };
+  }, []);
+  return <></>;
+};
+export default AuthProvider;
+---
+Path: /src/components/profile/ProfileLoader.tsx
+
+"use client";
+import { useCallback, useEffect, useState } from "react";
+import { createClient } from "@/lib/utils/supabase/client";
+import { UserProfile } from "@/lib/types/userProfile";
+import { useProfileStore } from "@/lib/store/profile";
+import { User } from "@supabase/supabase-js";
+import { legacyApiFetch } from "@/lib/api/client";
+export function ProfileLoader() {
+  const setProfile = useProfileStore((state) => state.setProfile);
+  const isLoading = useProfileStore((state) => state.loading);
+  const setIsLoading = useProfileStore((state) => state.setLoading);
+  const handleProfileCallback = useCallback(handleProfile, [
+    setProfile,
+    setIsLoading,
+  ]);
+  async function handleProfile(user: User | null) {
+    if (!user) {
+      setProfile(null);
+      return;
+    }
+    setIsLoading(true);
+    const getCurrentProfileRes = await legacyApiFetch(
+      `/info/profile/${user.id}`
+    );
+    if (!getCurrentProfileRes.ok) {
+      setProfile(null);
+      return;
+    }
+    const currentProfile = (await getCurrentProfileRes.json()) as UserProfile;
+    setProfile(currentProfile);
+  }
+  useEffect(() => {
+    setIsLoading(true);
+    const supabase = createClient();
+    const readUser = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      handleProfileCallback(user);
+    };
+    readUser();
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        const user = session?.user || null;
+        handleProfileCallback(user);
+      }
+    );
+    return () => {
+      listener?.subscription.unsubscribe();
+    };
+  }, [handleProfileCallback, setIsLoading]);
+  return null;
+}
+---
+Path: /src/components/theme/mode-toggle.tsx
+
+"use client";
+import * as React from "react";
+import { Moon, Sun } from "lucide-react";
+import { useTheme } from "next-themes";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+export function ModeToggle() {
+  const { setTheme } = useTheme();
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon">
+          <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+          <Moon className="absolute top-7 h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+          <span className="sr-only">Toggle theme</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => setTheme("light")}>
+          Light
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("dark")}>
+          Dark
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("system")}>
+          System
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+---
+Path: /src/lib/utils.ts
+
+import { type ClassValue, clsx } from "clsx"
+import { twMerge } from "tailwind-merge"
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+---
+Path: /src/lib/utils/supabase/middleware.ts
+
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { type NextRequest, NextResponse } from "next/server";
+export function createClient(
+  request: NextRequest,
+  response: NextResponse,
+  { asAdmin = false }: { asAdmin?: boolean } = {}
+) {
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    asAdmin
+      ? process.env.SUPABASE_SERVICE_ROLE_KEY!
+      : process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return request.cookies.get(name)?.value;
+        },
+        set(name: string, value: string, options: CookieOptions) {
+          request.cookies.set({
+            name,
+            value,
+            ...options,
+          });
+          response = NextResponse.next({
+            request: {
+              headers: request.headers,
+            },
+          });
+          response.cookies.set({
+            name,
+            value,
+            ...options,
+          });
+        },
+        remove(name: string, options: CookieOptions) {
+          request.cookies.set({
+            name,
+            value: "",
+            ...options,
+          });
+          response = NextResponse.next({
+            request: {
+              headers: request.headers,
+            },
+          });
+          response.cookies.set({
+            name,
+            value: "",
+            ...options,
+          });
+        },
+      },
+    }
+  );
+}
+---
+Path: /src/lib/utils/supabase/client.ts
+
+import { createBrowserClient } from "@supabase/ssr";
+export function createClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
+---
+Path: /src/lib/utils/supabase/server.ts
+
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { cookies } from "next/headers";
+export function createClient({ asAdmin = false }: { asAdmin?: boolean } = {}) {
+  const cookieStore = cookies();
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    asAdmin
+      ? process.env.SUPABASE_SERVICE_ROLE_KEY!
+      : process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+        set(name: string, value: string, options: CookieOptions) {
+          try {
+            cookieStore.set({ name, value, ...options });
+          } catch (error) {}
+        },
+        remove(name: string, options: CookieOptions) {
+          try {
+            cookieStore.set({ name, value: "", ...options });
+          } catch (error) {}
+        },
+      },
+    }
+  );
+}
+---
+Path: /src/lib/auth/protectedRoute.ts
+
+import { createClient } from "@/lib/utils/supabase/server";
+import { UserProfile } from "@/lib/types/userProfile";
+import { legacyApiFetch } from "../api/server";
+class AuthError extends Error {
+  customErrorType: string;
+  constructor(message: string) {
+    super(message);
+    this.name = "AuthError";
+    this.customErrorType = "AuthError";
+  }
+}
+class RoleError extends Error {
+  customErrorType: string;
+  constructor(message: string) {
+    super(message);
+    this.name = "RoleError";
+    this.customErrorType = "RoleError";
+  }
+}
+export async function protectRoute(
+  requiredRole?: string
+): Promise<UserProfile> {
+  const supabase = createClient();
+  const {
+    data: { user: authUser },
+  } = await supabase.auth.getUser();
+  if (!authUser) {
+    throw new AuthError("User is not authenticated");
+  }
+  const res = await legacyApiFetch(`/info/profile/${authUser.id}`);
+  if (!res.ok) {
+    throw new Error("Failed to fetch user profile");
+  }
+  const userProfile = (await res.json()) as UserProfile;
+  if (requiredRole && userProfile.role !== requiredRole) {
+    throw new RoleError(
+      `User does not have the required role: ${requiredRole}`
+    );
+  }
+  return userProfile;
+}
+---
+Path: /src/lib/types/inviteuser.ts
+
+import { z } from "zod";
+export const InviteUserSchema = z.object({
+  email: z
+    .string()
+    .min(1, { message: "Please enter an email." })
+    .email({ message: "Please enter a valid email." }),
+  role: z.enum(["ADMIN", "OWNER", "TEACHER", "STUDENT"], {
+    message: "Please select a valid role.",
+  }),
+  organization: z.string().optional(),
+});
+export type InviteUserType = z.infer<typeof InviteUserSchema>;
+---
+Path: /src/lib/types/actionState.ts
+
+export type ErrorActionState<T> = {
+  success?: false;
+  message?: string;
+  errors?: {
+    [K in keyof T]?: string[];
+  };
+};
+export type SucessActionState = {
+  success: true;
+  message?: string;
+  data: unknown;
+};
+export type ActionState<T> = {
+  message?: string;
+} & (ErrorActionState<T> | SucessActionState);
+---
+Path: /src/lib/types/organization.ts
+
+import { z } from "zod";
+export const organizationSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1, "Organization name is required"),
+});
+export const organizationFormSchema = z.object({
+  name: z
+    .string()
+    .min(1, "Organization name is required")
+    .min(3, "Organization name must be at least 3 characters"),
+});
+export type OrganizationFormData = z.infer<typeof organizationFormSchema>;
+export type Organization = z.infer<typeof organizationSchema>;
+---
+Path: /src/lib/types/userProfile.ts
+
+import { Organization } from "./organization";
+export type UserProfile = {
+  id: string;
+  name: string;
+  email: string;
+  character: string;
+  level: string;
+  role: string;
+  registered: boolean;
+  organizationId: string;
+  organization?: Organization;
+};
+---
+Path: /src/lib/hooks/useFormWithServerValidation.ts
+
+import { useEffect, useTransition, useCallback, useRef } from "react";
+import { useForm, UseFormReturn, FieldValues, Path } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useFormState } from "react-dom";
+import { ZodSchema } from "zod";
+import {
+  ActionState,
+  ErrorActionState,
+  SucessActionState,
+} from "@/lib/types/actionState";
+type ServerAction<T extends FieldValues> = (
+  prevState: ActionState<T>,
+  formData: FormData
+) => Promise<ActionState<T>>;
+interface UseFormWithServerValidationProps<T extends FieldValues> {
+  schema: ZodSchema<T>;
+  serverAction: ServerAction<T>;
+  initialState: ActionState<T>;
+  onError?: (e: ErrorActionState<T>) => void;
+  onSuccess?: (e: SucessActionState) => void;
+}
+interface UseFormWithServerValidationReturn<T extends FieldValues>
+  extends Omit<UseFormReturn<T>, "formState"> {
+  formState: UseFormReturn<T>["formState"];
+  serverState: ActionState<T>;
+  formAction: (payload: FormData) => void;
+  isPending: boolean;
+  onSubmit: (data: T) => void;
+}
+export function useFormWithServerValidation<T extends FieldValues>({
+  schema,
+  serverAction,
+  initialState,
+  onError,
+  onSuccess,
+}: UseFormWithServerValidationProps<T>): UseFormWithServerValidationReturn<T> {
+  const [isPending, startTransition] = useTransition();
+  const [serverState, formAction] = useFormState(serverAction, initialState);
+  const form = useForm<T>({
+    resolver: zodResolver(schema),
+  });
+  const { setError } = form;
+  const onErrorRef = useRef(onError);
+  const onSuccessRef = useRef(onSuccess);
+  useEffect(() => {
+    onErrorRef.current = onError;
+    onSuccessRef.current = onSuccess;
+  }, [onError, onSuccess]);
+  useEffect(() => {
+    if (!serverState.success && serverState.errors) {
+      Object.entries(serverState.errors).forEach(([key, value]) => {
+        setError(key as Path<T>, {
+          type: "server",
+          message: Array.isArray(value) ? value[0] : value,
+        });
+      });
+    }
+    if (serverState.success === false) {
+      onErrorRef.current?.(serverState);
+    } else if (serverState.success) {
+      onSuccessRef.current?.(serverState);
+    }
+  }, [serverState, setError]);
+  const onSubmit = useCallback(
+    (data: T) => {
+      startTransition(() => {
+        const formData = new FormData();
+        Object.entries(data).forEach(([key, value]) => {
+          formData.append(key, value as string);
+        });
+        formAction(formData);
+      });
+    },
+    [formAction]
+  );
+  return {
+    ...form,
+    formState: form.formState,
+    serverState,
+    formAction,
+    isPending,
+    onSubmit,
+  };
+}
+---
+Path: /src/lib/store/user.ts
+
+import { User } from "@supabase/supabase-js";
+import { create } from "zustand";
+import { createClient } from "../utils/supabase/client";
+interface UserState {
+  user: User | null;
+  loading: boolean;
+  setLoading: (loading: boolean) => void;
+  setUser: (user: User | null) => void;
+  signOut: () => Promise<void>;
+}
+export const useUserStore = create<UserState>()((set) => ({
+  user: null,
+  loading: true,
+  setLoading: (loading) => {
+    set({ loading });
+  },
+  setUser: (user) => {
+    set({ user, loading: false });
+  },
+  signOut: async () => {
+    set({ loading: true });
+    const supabase = createClient();
+    set({ user: null });
+    await supabase.auth.signOut();
+    set({ loading: false });
+  },
+}));
+---
+Path: /src/lib/store/profile.ts
+
+import { create } from "zustand";
+import { UserProfile } from "@/lib/types/userProfile";
+const defaultProfile: UserProfile = {
+  id: "",
+  name: "Invité",
+  email: "",
+  character: "",
+  level: "0",
+  role: "GUEST",
+  registered: false,
+  organizationId: "",
+  organization: undefined,
+};
+type ProfileStore = {
+  profile: UserProfile | null;
+  safeProfile: UserProfile;
+  setProfile: (profile: UserProfile | null) => void;
+  loading: boolean;
+  setLoading: (loading: boolean) => void;
+};
+export const useProfileStore = create<ProfileStore>((set) => ({
+  profile: null,
+  safeProfile: defaultProfile,
+  setProfile: (profile) => {
+    set({
+      profile,
+      safeProfile: profile || defaultProfile,
+      loading: false,
+    });
+  },
+  loading: true,
+  setLoading: (loading) => set({ loading }),
+}));
+---
+Path: /src/lib/api/client.ts
+
+import { createClient } from "../utils/supabase/client";
+export async function legacyApiFetch(
+  endpoint: string,
+  init: RequestInit | undefined = undefined
+) {
+  const {
+    data: { session },
+  } = await createClient().auth.getSession();
+  const authorization = session?.access_token || "";
+  const headers = {
+    authorization: `Bearer ${authorization}`,
+    "Content-Type": "application/json",
+    ...init?.headers,
+  };
+  return fetch(process.env.NEXT_PUBLIC_LEGACY_API_URL + endpoint, {
+    ...init,
+    headers: headers,
+  });
+}
+---
+Path: /src/lib/api/server.ts
+
+import { createClient } from "../utils/supabase/server";
+async function getAuthorizationHeader() {
+  const supabase = createClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  return session?.access_token || "";
+}
+export async function legacyApiFetch(
+  endpoint: string,
+  init: RequestInit | undefined = undefined
+) {
+  const authorization = await getAuthorizationHeader();
+  const headers = {
+    authorization: `Bearer ${authorization}`,
+    "Content-Type": "application/json",
+    ...init?.headers,
+  };
+  return fetch(process.env.NEXT_PUBLIC_LEGACY_API_URL + endpoint, {
+    ...init,
+    headers: headers,
+    cache: "no-store",
+  });
+}
+---
+Path: /src/lib/api/apiErrors.ts
+
+interface IApiError extends Error {
+  message: string;
+  statusCode: number;
+}
+export class ApiError implements IApiError {
+  name: string;
+  message: string;
+  statusCode: number;
+  constructor(
+    message: string = "",
+    statusCode: number = 0,
+    name: string = "ApiError"
+  ) {
+    this.message = message;
+    this.statusCode = statusCode;
+    this.name = name;
+  }
+}
+export class NotFoundError extends ApiError {
+  constructor(message: string = "Not Found") {
+    super(message, 404, "NotFoundError");
+  }
+}
+export type ExecHandler = () => Promise<any>;
+export async function errorHandler(exec: ExecHandler) {
+  try {
+    return await exec();
+  } catch (e) {
+    if (e instanceof ApiError) {
+      return Response.json({ error: e.message }, { status: e.statusCode });
+    }
+    return Response.json({ error: "An error occured" }, { status: 500 });
+  }
+}
+---
+Path: /src/contexts/theme-provider.tsx
+
+"use client";
+import * as React from "react";
+import { ThemeProvider as NextThemesProvider } from "next-themes";
+import { type ThemeProviderProps } from "next-themes/dist/types";
+export function ThemeProvider({ children, ...props }: ThemeProviderProps) {
+  return <NextThemesProvider {...props}>{children}</NextThemesProvider>;
+}
+---
+Path: /src/middlewares/setCurrentPathMiddleware.ts
+
+import type { MiddlewareWrapperType } from "./middlewareTypes";
+export const setCurrentPathMiddleware: MiddlewareWrapperType = (next) => {
+  return (req, evt, res) => {
+    res.headers.set("x-current-path", req.nextUrl.pathname);
+    return next(req, evt, res);
+  };
+};
+---
+Path: /src/middlewares/updateSessionMiddleware.ts
+
+import { NextResponse } from "next/server";
+import type { MiddlewareWrapperType } from "./middlewareTypes";
+import { createClient } from "@/lib/utils/supabase/middleware";
+export const updateSessionMiddleware: MiddlewareWrapperType = (next) => {
+  return async (req, evt) => {
+    try {
+      let response = NextResponse.next({
+        request: {
+          headers: req.headers,
+        },
+      });
+      const supabase = createClient(req, response);
+      await supabase.auth.getUser();
+      return next(req, evt, response);
+    } catch (e) {
+      return next(
+        req,
+        evt,
+        NextResponse.next({
+          request: {
+            headers: req.headers,
+          },
+        })
+      );
+    }
+  };
+};
+---
+Path: /src/middlewares/protectedApiMiddleware.ts
+
+import { createClient } from "@/lib/utils/supabase/server";
+import { MiddlewareWrapperType } from "./middlewareTypes";
+const protectedApiPaths = ["/api"];
+export const protectedApiMiddleware: MiddlewareWrapperType = (next) => {
+  return async (req, evt, res) => {
+    const isProtectedPath = protectedApiPaths.some((path) =>
+      req.nextUrl.pathname.startsWith(path)
+    );
+    if (isProtectedPath) {
+      const authBearer =
+        req.headers.get("authorization")?.split(" ") || undefined;
+      const token = authBearer && authBearer[1];
+      const supabase = createClient();
+      const { data: user, error } = await supabase.auth.getUser(token);
+      if (error || !user) {
+        return Response.json(
+          { message: "Unauthorized" },
+          {
+            status: 401,
+          }
+        );
+      }
+    }
+    return next(req, evt, res);
+  };
+};
+---
+Path: /src/middlewares/middlewareHandler.ts
+
+import type { NextRequest, NextFetchEvent, NextResponse } from "next/server";
+import type {
+  MiddlewareWrapperType,
+  ChainMiddlewareType,
+} from "./middlewareTypes";
+export function middlewareHandler(
+  middlewares: Array<MiddlewareWrapperType>,
+  i = 0
+): ChainMiddlewareType {
+  const current = middlewares[i];
+  if (current) {
+    const next = middlewareHandler(middlewares, i + 1);
+    return current(next);
+  }
+  return (_req: NextRequest, _evt: NextFetchEvent, res: NextResponse) => {
+    return res;
+  };
+}
+---
+Path: /src/middlewares/middlewareTypes.ts
+
+import type { NextFetchEvent, NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import type { NextMiddlewareResult } from "next/dist/server/web/types";
+export type MiddlewareWrapperType = (
+  middleware: ChainMiddlewareType
+) => ChainMiddlewareType;
+export type ChainMiddlewareType = (
+  request: NextRequest,
+  event: NextFetchEvent,
+  response: NextResponse
+) => NextMiddlewareResult | Promise<NextMiddlewareResult>;
+---
+Path: /src/app/loading.tsx
+
+import Spinner from "@/components/ui/spinner";
+import React from "react";
+export default function loading() {
+  return (
+    <div className="h-full flex items-center justify-center">
+      <Spinner size="lg" />
+    </div>
+  );
+}
+---
+Path: /src/app/layout.tsx
+
+import type { Metadata } from "next";
+import { Inter, Poppins, DM_Sans } from "next/font/google";
+import "./globals.css";
+import { cn } from "@/lib/utils";
+import Providers from "./_components/Providers";
+const inter = Inter({ subsets: ["latin"] });
+const poppins = Poppins({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-poppins",
+});
+const dmSans = DM_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "700"],
+  variable: "--font-dm-sans",
+});
+export const metadata: Metadata = {
+  title: "One Learn Dashboard",
+};
+export default async function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <body
+        className={cn(
+          inter.className,
+          poppins.variable,
+          dmSans.variable,
+          "h-screen font-dm-sans"
+        )}
+      >
+        <Providers>{children}</Providers>
+      </body>
+    </html>
+  );
+}
+---
+Path: /src/app/globals.css
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 251 100% 55%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --success: 142 76% 36%;
+    --success-foreground: 355 100% 100%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 2rem;
+  }
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 95% 63%;
+    --destructive-foreground: 210 40% 98%;
+    --success: 142 70% 45%;
+    --success-foreground: 144 100% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 48%;
+  }
+}
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+---
+Path: /src/app/error.tsx
+
+"use client";
+import React, { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import Typography from "@/components/ui/typography";
+interface ErrorProps {
+  error: Error & { digest?: string; customErrorType?: string };
+  reset: () => void;
+}
+export default function Error({ error, reset }: ErrorProps) {
+  const router = useRouter();
+  useEffect(() => {
+    console.error("Detailed error:", error);
+  }, [error]);
+  const getErrorMessage = (error: ErrorProps["error"]) => {
+    switch (error.customErrorType) {
+      case "AuthError":
+        return "You must be logged in to access this page.";
+      case "RoleError":
+        return "You don't have the required permissions to access this page.";
+      default:
+        return (
+          error.message ||
+          "An unexpected error occurred. Please try again later."
+        );
+    }
+  };
+  const getErrorAction = (error: ErrorProps["error"]) => {
+    switch (error.customErrorType) {
+      case "AuthError":
+        return (
+          <Button onClick={() => router.push("/login")}>Go to Login</Button>
+        );
+      case "RoleError":
+        return <Button onClick={() => router.push("/")}>Go to Homepage</Button>;
+      default:
+        return <Button onClick={() => reset()}>Try Again</Button>;
+    }
+  };
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen p-4">
+      <Typography variant="h2" className="mb-4 text-red-600">
+        Oops! Something went wrong
+      </Typography>
+      <Typography variant="body-md" className="mb-6 text-center">
+        {getErrorMessage(error)}
+      </Typography>
+      {getErrorAction(error)}
+      <Typography variant="body-md" className="mt-4 text-gray-500">
+        Error type: {error.customErrorType || error.name}
+      </Typography>
+    </div>
+  );
+}
+---
+Path: /src/app/manifest.json
+
+{
+  "name": "One Learn",
+  "short_name": "One Learn",
+  "description": "One Learn Dashboard",
+  "display": "fullscreen",
+  "start_url": "/",
+  "background_color": "#FFFFFF",
+  "theme_color": "#FFFFFF"
+}
+---
+Path: /src/app/(authenticated)/dashboard/layout.tsx
+
+import { legacyApiFetch } from "@/lib/api/server";
+import DesktopSideNav from "./components/navigation/DesktopSideNav";
+import TopNav from "./components/navigation/TopNav";
+import { notFound } from "next/navigation";
+import { UserProfile } from "@/lib/types/userProfile";
+import { createClient } from "@/lib/utils/supabase/server";
+export default async function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const supabase = createClient();
+  const {
+    data: { user: authUser },
+  } = await supabase.auth.getUser();
+  if (!authUser) {
+    notFound();
+  }
+  const res = await legacyApiFetch(`/info/profile/${authUser.id}`);
+  if (!res.ok) {
+    notFound();
+  }
+  const user = (await res.json()) as UserProfile;
+  const isAdmin = user.role == "ADMIN";
+  return (
+    <div className="flex min-h-screen w-full">
+      <DesktopSideNav isAdmin={isAdmin} />
+      <div className="flex-1 md:ml-[220px] lg:ml-[280px] flex flex-col">
+        <TopNav />
+        <main className="mt-20 lg:mt-20 overflow-y-auto">
+          <div className="flex flex-col gap-4 p-4 lg:gap-6 lg:p-6">
+            {children}
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}
+---
+Path: /src/app/(authenticated)/dashboard/(home)/loading.tsx
+
+import React from "react";
+export default function loading() {
+  return <div>Loading Overview</div>;
+}
+---
+Path: /src/app/(authenticated)/dashboard/(home)/page.tsx
+
+import EikenPassRate from "./components/EikenPassRate";
+import TopStudentsCard from "./components/TopStudentsCard";
+import CSEScoreCard from "./components/CSEScoreCard";
+import TopInsightsSection from "./components/TopInsightsSection";
+import WelcomeMessage from "./components/WelcomeMessage";
+export default async function Dashboard() {
+  return (
+    <>
+      <WelcomeMessage />
+      <div className="grid grid-cols-1 gap-16 md:grid-cols-2 lg:grid-cols-3">
+        <EikenPassRate />
+        <TopStudentsCard />
+        <CSEScoreCard />
+      </div>
+      <div className="mt-8">
+        <TopInsightsSection />
+      </div>
+    </>
+  );
+}
+---
+Path: /src/app/(authenticated)/dashboard/(home)/components/ActiveUsersCardChart.tsx
+
+import CustomBarChart from "@/components/charts/CustomBarChart";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import Typography from "@/components/ui/typography";
+import React from "react";
+const newUsersData = [
+  { name: "Mon", value: 30 },
+  { name: "Tues", value: 45 },
+  { name: "Wed", value: 20 },
+  { name: "Thur", value: 60 },
+  { name: "Fri", value: 50 },
+  { name: "Sat", value: 70 },
+  { name: "Sun", value: 40 },
+];
+const ActiveUsersCardChart = () => {
+  return (
+    <Card>
+      <CardHeader>
+        <Typography variant="h4">Active users</Typography>
+      </CardHeader>
+      <CardContent>
+        <CustomBarChart data={newUsersData} />
+      </CardContent>
+    </Card>
+  );
+};
+export default ActiveUsersCardChart;
+---
+Path: /src/app/(authenticated)/dashboard/(home)/components/WelcomeMessage.tsx
+
+"use client";
+import { Skeleton } from "@/components/ui/skeleton";
+import Typography from "@/components/ui/typography";
+import { useProfileStore } from "@/lib/store/profile";
+export default function WelcomeMessage() {
+  const profileLoading = useProfileStore((state) => state.loading);
+  const profile = useProfileStore((state) => state.safeProfile);
+  return (
+    <>
+      <Typography variant="h2" className="text-[#2B3674]">
+        Overview
+      </Typography>
+      {profileLoading && <Skeleton className="h-8 w-64" />}
+      {!profileLoading && (
+        <span className="text-[20px] text-[#707EAE]">
+          Hi {profile.name}, welcome back!
+        </span>
+      )}
+    </>
+  );
+}
+---
+Path: /src/app/(authenticated)/dashboard/(home)/components/EikenPassRate.tsx
+
+"use client";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+} from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import Typography from "@/components/ui/typography";
+import { cn } from "@/lib/utils";
+import React from "react";
+import {
+  Bar,
+  BarChart,
+  Legend,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+export default function EikenPassRate() {
+  const selectValues = [
+    {
+      id: 1,
+      name: "Select item 1",
+      value: "select-item-1",
+    },
+    {
+      id: 2,
+      name: "Select item 2",
+      value: "select-item-2",
+    },
+    {
+      id: 3,
+      name: "Select item 3",
+      value: "select-item-3",
+    },
+    {
+      id: 4,
+      name: "Select item 4",
+      value: "select-item-4",
+    },
+  ] as const;
+  return (
+    <Card className="col-span-2">
+      <CardHeader className="flex flex-row w-full items-center justify-between">
+        <Typography variant="h4" className="font-semibold w-fit">
+          Eiken Pass Rate
+        </Typography>
+        <Select>
+          <SelectTrigger
+            variant="ghost"
+            id="organization"
+            className="text-left w-40"
+          >
+            <SelectValue placeholder="All classes" />
+          </SelectTrigger>
+          <SelectContent>
+            {selectValues.map((item) => (
+              <SelectItem key={item.id} value={item.value}>
+                {item.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </CardHeader>
+      <CardContent>
+        <Chart />
+      </CardContent>
+      <CardFooter>
+        <div className="w-full flex items-center justify-around">
+          <OverallItem title="On track" percentage={63} color="bg-[#4318FF]" />
+          <OverallItem title="Passed" percentage={25} color="bg-[#6AD2FF]" />
+          <OverallItem
+            title="Not on track"
+            percentage={13}
+            color="bg-[#EFF4FB]"
+          />
+        </div>
+      </CardFooter>
+    </Card>
+  );
+}
+type OverallItemProps = {
+  color: string;
+  percentage: number;
+  title: string;
+};
+function OverallItem({ color, percentage, title }: OverallItemProps) {
+  return (
+    <div className="space-y-1">
+      <div className="flex gap-2 items-center">
+        <div className={cn("size-3 rounded-full", color)}></div>
+        <Typography
+          variant="caption-4"
+          className="text-[12px] text-[#A3AED0] font-medium"
+        >
+          {title}
+        </Typography>
+      </div>
+      <div className="w-full justify-center text-center">
+        <Typography className="font-bold">{percentage}%</Typography>
+      </div>
+    </div>
+  );
+}
+const data = [
+  { name: "Class A", onTrack: 33, passed: 33, notOnTrack: 40 },
+  { name: "Class B", onTrack: 58, passed: 28, notOnTrack: 14 },
+  { name: "Class C", onTrack: 50, passed: 30, notOnTrack: 20 },
+  { name: "Class D", onTrack: 60, passed: 27, notOnTrack: 13 },
+  { name: "Class E", onTrack: 55, passed: 30, notOnTrack: 15 },
+  { name: "Class F", onTrack: 57, passed: 28, notOnTrack: 15 },
+];
+function Chart() {
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <BarChart
+        data={data}
+        margin={{ top: 0, right: 30, left: 20, bottom: 50 }}
+      >
+        <XAxis
+          dataKey="name"
+          axisLine={false}
+          tickLine={false}
+          dy={50}
+          tick={{
+            fill: "#A3AED0", 
+            fontSize: 14, 
+          }}
+        />
+        <YAxis hide />
+        <Tooltip
+          cursor={{
+            fill: "hsl(var(--muted-foreground) / 2%)",
+          }}
+        />
+        {}
+        <Bar
+          dataKey="onTrack"
+          stackId="a"
+          fill="#4318FF"
+          name="On track"
+          barSize={25}
+        />
+        <Bar
+          dataKey="passed"
+          stackId="a"
+          fill="#6AD2FF"
+          name="Passed"
+          barSize={40}
+        />
+        <Bar
+          dataKey="notOnTrack"
+          stackId="a"
+          fill="#EFF4FB"
+          name="Not on track"
+          barSize={40}
+          radius={[1000, 1000, 0, 0]}
+        />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+---
+Path: /src/app/(authenticated)/dashboard/(home)/components/TopInsightsSection.tsx
+
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import Typography from "@/components/ui/typography";
+import Image from "next/image";
+import React from "react";
+type TopInsight = {
+  title: string;
+  description: string;
+};
+const topInsightDatas: TopInsight[] = [
+  {
+    title: "Retention",
+    description: "3 students are at risk of dropping out from your school",
+  },
+  {
+    title: "Learning",
+    description: "“Grammar topic 5” phrasal verb is the most challenging topic",
+  },
+  {
+    title: "Competitive Edge",
+    description:
+      "Your school's average CSE improvement rate is 15% higher than the local average",
+  },
+  {
+    title: "Cross-Selling Opportunity",
+    description: '"40% of Eiken 5 students are ready to move to Eiken 4 prep"',
+  },
+] as const;
+export default function TopInsightsSection() {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center">
+        <Image
+          alt="fingerprint"
+          src="/images/finger-print.png"
+          width={66}
+          height={66}
+        />
+        <div>
+          <Typography variant="h4" className="font-semibold w-fit">
+            Top Insights
+          </Typography>
+          <Typography variant="caption-3" className="text-[#A3AED0]">
+            Month of June
+          </Typography>
+        </div>
+      </div>
+      <Separator className="w-4/6" />
+      <ul className="list-disc ml-10 flex flex-col gap-2 mb-10">
+        {topInsightDatas.map((insight, index) => (
+          <TopInsightItem key={index} insight={insight} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+type TopInsightProps = {
+  insight: TopInsight;
+};
+function TopInsightItem({ insight }: TopInsightProps) {
+  return (
+    <li className="py-4 px-2 hover:bg-muted">
+      <div className="flex justify-between items-center">
+        <div>
+          <span className="font-medium">{insight.title}:</span>{" "}
+          {insight.description}
+        </div>
+        <Button size="sm" className="rounded-[13px] text-[12px]">
+          Learn more
+        </Button>
+      </div>
+    </li>
+  );
+}
+---
+Path: /src/app/(authenticated)/dashboard/(home)/components/TopStudentsCard.tsx
+
+"use client";
+import { Avatar } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import Typography from "@/components/ui/typography";
+import { EllipsisVertical } from "lucide-react";
+import Image from "next/image";
+import React from "react";
+type StudenItemData = {
+  name: string;
+  class: string;
+  avatar: string;
+};
+const students: StudenItemData[] = [
+  {
+    name: "Ana Moritomo",
+    class: "Class A",
+    avatar: "/images/ana-moritomo.png",
+  },
+  {
+    name: "Taiki Kawara",
+    class: "Class E",
+    avatar: "/images/taiki-kawara.png",
+  },
+  { name: "Yuka Reiji", class: "Class B", avatar: "/images/yuka-reiji.png" },
+] as const;
+export default function TopStudentsCard() {
+  return (
+    <Card>
+      <CardHeader className="w-full flex flex-row items-center justify-between">
+        <Typography variant="h5" asChild className="font-semibold">
+          <span>Top students</span>
+        </Typography>
+        <Button
+          variant="secondary"
+          size="md"
+          className="text-[12px] rounded-[10px] text-[#A3AED0]"
+        >
+          See all
+        </Button>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-24">
+        {students.map((student) => (
+          <StudentItem key={student.name} student={student} />
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+type StudentItemProps = {
+  student: StudenItemData;
+};
+function StudentItem({ student }: StudentItemProps) {
+  return (
+    <div className="flex items-center space-x-4">
+      <Avatar className="size-14">
+        <Image
+          src={student.avatar}
+          alt={student.name}
+          width={60}
+          height={60}
+          className="rounded-full"
+        />
+      </Avatar>
+      <div className="flex-1 space-y-1.5">
+        <Typography variant="h5" className="font-medium">
+          {student.name}
+        </Typography>
+        <Typography variant="caption-3" className="text-muted-foreground/80">
+          {student.class}
+        </Typography>
+      </div>
+      <Button variant="ghost" size="icon" className="text-[#A3AED0]">
+        <EllipsisVertical />
+      </Button>
+    </div>
+  );
+}
+---
+Path: /src/app/(authenticated)/dashboard/(home)/components/CSEScoreCard.tsx
+
+"use client";
+import React from "react";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import Typography from "@/components/ui/typography";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+import { Flame, CheckCircle2, Check } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Avatar } from "@radix-ui/react-avatar";
+const data = [
+  { month: "SEP", score: 70 },
+  { month: "OCT", score: 65 },
+  { month: "NOV", score: 80 },
+  { month: "DEC", score: 60 },
+  { month: "JAN", score: 90 },
+  { month: "FEB", score: 105 },
+];
+export default function CSEScoreCard() {
+  return (
+    <Card className="col-span-full">
+      <CardHeader className="flex flex-row w-full items-center justify-between">
+        <Typography variant="h4" className="font-semibold">
+          Average CSE Score* Improvement
+        </Typography>
+        <Select>
+          <SelectTrigger
+            variant="ghost"
+            id="organization"
+            className="text-left w-40"
+          >
+            <SelectValue placeholder="All classes" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="test">Test</SelectItem>
+          </SelectContent>
+        </Select>
+      </CardHeader>
+      <CardContent>
+        <div className="flex gap-16">
+          <div className="w-48">
+            <div className="flex w-fit items-center gap-2 mb-1">
+              <Typography variant="h4" className="font-medium">
+                +20 points
+              </Typography>
+              <div className="bg-red-100 p-1 rounded">
+                <Flame className="text-red-500 w-4 h-4" />
+              </div>
+            </div>
+            <Typography variant="caption-3" className="text-[#A3AED0]">
+              In November <span className="text-green-500">+2.45%</span>
+            </Typography>
+            <div className="flex items-center gap-2 mt-6">
+              <div className="size-4 rounded-full bg-green-500 flex items-center justify-between text-center">
+                <Check size={12} color="white" className="ml-0.5" />
+              </div>
+              <Typography variant="caption-2" className="text-green-500">
+                On track
+              </Typography>
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart
+              data={data}
+              margin={{ top: 20, right: 40, left: 60, bottom: 20 }}
+            >
+              <defs>
+                <filter
+                  id="shadow"
+                  x="-20%"
+                  y="-20%"
+                  width="180%"
+                  height="200%"
+                >
+                  <feGaussianBlur
+                    in="SourceAlpha"
+                    stdDeviation="6"
+                    result="blur"
+                  />
+                  <feColorMatrix
+                    in="blur"
+                    type="matrix"
+                    values="0 0 0 0 0.2627451 0 0 0 0 0.0941176 0 0 0 0 1 0 0 0 0.7 0"
+                    result="coloredBlur"
+                  />
+                  <feOffset
+                    in="coloredBlur"
+                    dx="0"
+                    dy="3"
+                    result="offsetBlur"
+                  />
+                  <feMerge>
+                    <feMergeNode in="offsetBlur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+              </defs>
+              <XAxis
+                dataKey="month"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: "#A3AED0" }}
+              />
+              <YAxis hide />
+              <Tooltip
+                content={({ payload, label }) => {
+                  if (payload && payload.length) {
+                    return (
+                      <div className="bg-[#4318FF] text-white p-2 rounded">
+                        +{payload[0].value}
+                      </div>
+                    );
+                  }
+                  return null;
+                }}
+              />
+              <Line
+                type="monotone"
+                dataKey="score"
+                stroke="#4318FF"
+                strokeWidth={3}
+                dot={false}
+                activeDot={{
+                  r: 6,
+                  fill: "#FFF",
+                  stroke: "#4318FF",
+                  strokeWidth: 3,
+                }}
+                filter="url(#shadow)"
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+---
+Path: /src/app/(authenticated)/dashboard/(home)/components/LessonDoneCardChart.tsx
+
+import CustomAreaChart from "@/components/charts/CustomAreaChart";
+import CustomBarChart from "@/components/charts/CustomBarChart";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import Typography from "@/components/ui/typography";
+import React from "react";
+const lessonDone = [
+  { name: "Mon", value: 150 },
+  { name: "Tues", value: 200 },
+  { name: "Wed", value: 230 },
+  { name: "Thur", value: 175 },
+  { name: "Fri", value: 250 },
+  { name: "Sat", value: 92 },
+  { name: "Sun", value: 53 },
+];
+const LessonDoneCardChart = () => {
+  return (
+    <Card>
+      <CardHeader>
+        <Typography variant="h4">Lessons done this week</Typography>
+      </CardHeader>
+      <CardContent>
+        <CustomAreaChart color="green" data={lessonDone} />
+      </CardContent>
+    </Card>
+  );
+};
+export default LessonDoneCardChart;
+---
+Path: /src/app/(authenticated)/dashboard/components/navigation/DesktopSideNav.tsx
+
+"use client";
+import Link from "next/link";
+import Navlinks, { Navlink } from "../../data/nav-links";
+import { cn } from "@/lib/utils";
+import { usePathname } from "next/navigation";
+import Image from "next/image";
+type DesktopSideNavProps = {
+  isAdmin?: boolean;
+};
+export default function DesktopSideNav({ isAdmin }: DesktopSideNavProps) {
+  const pathname = usePathname();
+  const computedNavLinks = isAdmin
+    ? Navlinks
+    : Navlinks.filter((link) => !link.needAdmin);
+  function isActive(link: Navlink) {
+    return link.exact ? pathname === link.href : pathname.startsWith(link.href);
+  }
+  return (
+    <div className="hidden border-r md:block fixed top-0 left-0 h-screen overflow-y-auto w-[220px] lg:w-[280px]">
+      <div className="flex h-full flex-col gap-2">
+        <div className="flex h-14 items-center px-4 lg:h-[60px] lg:px-6">
+          <Link
+            href="/"
+            className="flex items-center gap-2 font-normal w-full text-center text-[26px]"
+          >
+            {}
+            <span className="w-full text-center font-poppins">
+              <span className="font-bold">ONE</span> LEARN
+            </span>
+          </Link>
+          {}
+        </div>
+        <div className="flex-1 flex flex-col">
+          <nav className="text-sm font-medium flex flex-col gap-2">
+            {computedNavLinks.map((link) => {
+              return (
+                <Link
+                  key={link.title}
+                  href={link.href}
+                  className={cn(
+                    "flex justify-between rounded-lg  text-muted-foreground transition-all hover:text-primary text-[16px] font-dm-sans pl-4 lg:pl-6",
+                    {
+                      "font-bold text-[#2B3674]": isActive(link),
+                      "text-[#A3AED0]": !isActive(link),
+                    }
+                  )}
+                >
+                  <div className="flex items-center gap-3 py-2">
+                    <link.icon
+                      className={cn("size-5", {
+                        "text-primary": isActive(link),
+                      })}
+                    />
+                    {link.title}
+                  </div>
+                  {isActive(link) && (
+                    <div className="h-full w-[4px] bg-[#4318FF]"></div>
+                  )}
+                </Link>
+              );
+            })}
+          </nav>
+          <div className="flex flex-1 items-end pb-4">
+            <div className="mx-auto relative">
+              <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-[78px] lg:-translate-y-[90px] z-0">
+                <Image
+                  src="/images/robotCat.png"
+                  alt="robot cat"
+                  width={152}
+                  height={152}
+                />
+              </div>
+              <div className="z-10 size-48 lg:size-56 bg-gradient-to-br from-[#868CFF] to-[#4318FF] rounded-3xl shadow-lg flex flex-col justify-center items-center text-white p-6 relative">
+                <h2 className="text-[16px] font-bold mb-2">Lexis School</h2>
+                <p className="text-[14px] font-normal">Premium Plan</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+---
+Path: /src/app/(authenticated)/dashboard/components/navigation/TopNav.tsx
+
+import { Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import NavbarAuthenticated from "@/components/navigation/navbar-authenticated";
+import MobileSideNav from "./MobileSideNav";
+import { CustomBreadcrumb } from "@/components/navigation/CustomBreadCrumb";
+export default function TopNav() {
+  return (
+    <header
+      className="fixed top-0 right-0 left-0 z-10 flex h-20 items-center gap-4 
+      px-4 lg:px-6 bg-background md:left-[220px] lg:left-[280px]"
+    >
+      <MobileSideNav />
+      <div className="w-full flex-1">
+        <CustomBreadcrumb />
+      </div>
+      <NavbarAuthenticated />
+    </header>
+  );
+}
+---
+Path: /src/app/(authenticated)/dashboard/components/navigation/MobileSideNav.tsx
+
+"use client";
+import Link from "next/link";
+import { Menu } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import Logo from "@/components/logo/logo";
+import Navlinks from "../../data/nav-links";
+import { cn } from "@/lib/utils";
+import { usePathname } from "next/navigation";
+import { useState } from "react";
+type MobileSideNavProps = {
+  isAdmin?: boolean;
+};
+export default function MobileSideNav({ isAdmin }: MobileSideNavProps) {
+  const pathname = usePathname();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const computedNavLinks = isAdmin
+    ? Navlinks
+    : Navlinks.filter((link) => !link.needAdmin);
+  return (
+    <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+      <SheetTrigger asChild>
+        <Button variant="outline" size="icon" className="shrink-0 md:hidden">
+          <Menu className="h-5 w-5" />
+          <span className="sr-only">Toggle navigation menu</span>
+        </Button>
+      </SheetTrigger>
+      <SheetContent side="left" className="flex flex-col">
+        <nav className="grid gap-2 text-lg font-medium">
+          <Link
+            href="/"
+            className="flex items-center gap-2 text-md font-semibold"
+          >
+            <Logo className="mb-1" size="xs" />
+            <span className="">One Learn</span>
+          </Link>
+          {computedNavLinks.map((link) => {
+            const isCurrent = link.exact
+              ? pathname === link.href
+              : pathname.startsWith(link.href);
+            return (
+              <Link
+                onClick={!isCurrent ? () => setSheetOpen(false) : undefined}
+                key={link.title}
+                href={link.href}
+                className={cn(
+                  "mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground",
+                  {
+                    "text-foreground bg-muted": isCurrent,
+                  }
+                )}
+              >
+                <link.icon className="h-5 w-5" />
+                {link.title}
+              </Link>
+            );
+          })}
+        </nav>
+      </SheetContent>
+    </Sheet>
+  );
+}
+---
+Path: /src/app/(authenticated)/dashboard/users/not-found.tsx
+
+import React from "react";
+const NotFound = () => {
+  return <div>Not found</div>;
+};
+export default NotFound;
+---
+Path: /src/app/(authenticated)/dashboard/users/page.tsx
+
+import { buttonVariants } from "@/components/ui/button";
+import Typography from "@/components/ui/typography";
+import { cn } from "@/lib/utils";
+import { Plus } from "lucide-react";
+import Link from "next/link";
+import React, { Suspense } from "react";
+import UserTableSkeleton from "./_components/UserTableSkeleton";
+import UserTable from "./_components/UserTable";
+export default function UsersPage() {
+  return (
+    <>
+      <div className="flex items-center justify-between">
+        <Typography variant="h3" className="text-foreground font-semibold">
+          Users
+        </Typography>
+        <Link
+          className={cn(
+            buttonVariants({ variant: "secondary" }),
+            "flex items-center gap-2"
+          )}
+          href="/dashboard/users/create"
+        >
+          <Plus className="h-4 w-4" />
+          Invite user
+        </Link>
+      </div>
+      {}
+      <Suspense fallback={<UserTableSkeleton lines={3} />}>
+        <UserTable />
+      </Suspense>
+    </>
+  );
+}
+---
+Path: /src/app/(authenticated)/dashboard/users/create/loading.tsx
+
+import Spinner from "@/components/ui/spinner";
+import React from "react";
+export default function loading() {
+  return (
+    <div className="h-full  flex items-center justify-center">
+      <Spinner size="lg" />
+    </div>
+  );
+}
+---
+Path: /src/app/(authenticated)/dashboard/users/create/page.tsx
+
+import Typography from "@/components/ui/typography";
+import React from "react";
+import InviteUserForm from "./components/InviteUserForm";
+import { RoleOption } from "../types/RoleOption";
+import { headers } from "next/headers";
+import { createClient } from "@/lib/utils/supabase/server";
+import Spinner from "@/components/ui/spinner";
+import { Organization } from "@/lib/types/organization";
+import { legacyApiFetch } from "@/lib/api/server";
+import { UserProfile } from "@/lib/types/userProfile";
+const Roles: RoleOption[] = [
+  {
+    label: "Admin",
+    value: "ADMIN",
+  },
+  {
+    label: "Owner",
+    value: "OWNER",
+  },
+  {
+    label: "Teacher",
+    value: "TEACHER",
+  },
+  {
+    label: "Student",
+    value: "STUDENT",
+  },
+] as const;
+const Inviteuser = async () => {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error("User not found");
+  }
+  const profileRes = await legacyApiFetch(`/info/profile/${user?.id}`);
+  if (!profileRes.ok) {
+    throw new Error("Profile not found");
+  }
+  const profile = (await profileRes.json()) as UserProfile;
+  const userRole = profile?.role || "";
+  const isAdmin = userRole === "ADMIN";
+  let organizations: Organization[] = [];
+  if (isAdmin) {
+    try {
+      const orgRes = await legacyApiFetch("/organizations");
+      if (orgRes.ok) {
+        organizations = await orgRes.json();
+      } else {
+        console.error("Failed to fetch organizations");
+      }
+    } catch (error) {
+      console.error("Error fetching organizations:", error);
+    }
+  }
+  const displayedRoles = Roles.filter((role) => {
+    if (role.value === "ADMIN" && !["ADMIN"].includes(userRole)) {
+      return false;
+    }
+    if (role.value === "OWNER" && !["ADMIN", "OWNER"].includes(userRole)) {
+      return false;
+    }
+    if (
+      role.value === "TEACHER" &&
+      !["ADMIN", "OWNER", "TEACHER"].includes(userRole)
+    ) {
+      return false;
+    }
+    return true;
+  });
+  return (
+    <>
+      <Typography variant="h3" className="text-foreground font-semibold">
+        Users {user?.user_metadata?.role}
+      </Typography>
+      <InviteUserForm
+        roles={displayedRoles}
+        isAdmin={isAdmin}
+        organizations={organizations}
+      />
+    </>
+  );
+};
+export default Inviteuser;
+---
+Path: /src/app/(authenticated)/dashboard/users/create/components/InviteUserForm.tsx
+
+"use client";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import Typography from "@/components/ui/typography";
+import { Plus } from "lucide-react";
+import FormButton from "@/components/ui/form-button";
+import { Controller } from "react-hook-form";
+import { InviteUserSchema, InviteUserType } from "@/lib/types/inviteuser";
+import { ActionState, ErrorActionState } from "@/lib/types/actionState";
+import { useFormWithServerValidation } from "@/lib/hooks/useFormWithServerValidation";
+import { useToast } from "@/components/ui/use-toast";
+import { inviteUserAction } from "@/lib/actions/users/userActions";
+import { RoleOption } from "../../types/RoleOption";
+import { Organization } from "@/lib/types/organization";
+import { useEffect } from "react";
+import { legacyApiFetch } from "@/lib/api/client";
+interface InviteUserFormProps {
+  roles: RoleOption[];
+  isAdmin: boolean;
+  organizations: Organization[];
+}
+const InviteUserForm = ({
+  roles,
+  isAdmin,
+  organizations,
+}: InviteUserFormProps) => {
+  const initialState: ActionState<InviteUserType> = {};
+  const { toast } = useToast();
+  const {
+    register,
+    control,
+    handleSubmit,
+    formState: { errors, isSubmitted, isValid },
+    isPending,
+    onSubmit,
+    serverState,
+  } = useFormWithServerValidation<InviteUserType>({
+    schema: InviteUserSchema,
+    serverAction: inviteUserAction,
+    initialState,
+    onError: (e: ErrorActionState<InviteUserType>) => {
+      toast({
+        variant: "destructive",
+        title: "Invitation failed",
+        description: e.message,
+      });
+    },
+    onSuccess: (e) => {
+      toast({
+        variant: "success",
+        title: e.message,
+      });
+    },
+  });
+  const shouldDisable = isSubmitted && !isValid;
+  useEffect(() => {
+    async function getOrganizations() {
+      const res = await legacyApiFetch("/organizations");
+      console.log(res);
+    }
+    getOrganizations();
+  }, []);
+  return (
+    <Card className="w-full">
+      <form onSubmit={handleSubmit(onSubmit)} noValidate>
+        <CardContent className="pt-4 grid grid-cols-1 md:grid-cols-2 gap-2">
+          {}
+          {isAdmin && (
+            <>
+              <div className="flex flex-col">
+                <Typography variant={"caption-2"}>
+                  <label htmlFor="organization">Organization</label>
+                </Typography>
+                <Typography
+                  variant={"caption-3"}
+                  className="text-muted-foreground/50 mb-1"
+                >
+                  <label htmlFor="organization">
+                    If not defined, will invite the user to your orgnization
+                  </label>
+                </Typography>
+                <Controller
+                  control={control}
+                  name="organization"
+                  render={({ field }) => (
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
+                      <SelectTrigger
+                        id="organization"
+                        className="w-full text-left"
+                      >
+                        <SelectValue placeholder="Select an organization" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {organizations.map((org) => (
+                          <SelectItem key={org.id} value={org.id}>
+                            {org.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                <div
+                  id="organization-error"
+                  aria-live="polite"
+                  aria-atomic="true"
+                >
+                  {errors?.organization && (
+                    <p className="mt-2 text-sm text-destructive">
+                      {errors.organization.message}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div></div>
+            </>
+          )}
+          {}
+          <div className="flex flex-col">
+            <Typography variant={"caption-2"} className="mb-1">
+              <label htmlFor="email">Email</label>
+            </Typography>
+            <Input
+              variant={errors?.email ? "destructive" : "default"}
+              type="email"
+              {...register("email")}
+              id="email"
+              autoComplete="email"
+              placeholder="example@domain.com"
+            />
+            <div id="email-error" aria-live="polite" aria-atomic="true">
+              {errors?.email && (
+                <p className="mt-2 text-sm text-destructive">
+                  {errors.email.message}
+                </p>
+              )}
+            </div>
+          </div>
+          {}
+          <div className="flex flex-col">
+            <Typography variant={"caption-2"} className="mb-1">
+              <label htmlFor="role">Role</label>
+            </Typography>
+            <Controller
+              control={control}
+              name="role"
+              render={({ field }) => (
+                <Select
+                  onValueChange={field.onChange}
+                  defaultValue={field.value}
+                >
+                  <SelectTrigger id="role" className="w-[180px]">
+                    <SelectValue placeholder="Select a role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {roles.map((role) => (
+                      <SelectItem key={role.value} value={role.value}>
+                        {role.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            <div id="role-error" aria-live="polite" aria-atomic="true">
+              {errors?.role && (
+                <p className="mt-2 text-sm text-destructive">
+                  {errors.role.message}
+                </p>
+              )}
+            </div>
+          </div>
+        </CardContent>
+        <CardFooter>
+          <FormButton
+            disabled={shouldDisable}
+            isLoading={isPending}
+            className="w-full md:w-fit"
+          >
+            <div className="flex gap-2 items-center">
+              <Plus />
+              Invite user
+            </div>
+          </FormButton>
+        </CardFooter>
+      </form>
+    </Card>
+  );
+};
+export default InviteUserForm;
+---
+Path: /src/app/(authenticated)/dashboard/users/[id]/edit/page.tsx
+
+import Typography from "@/components/ui/typography";
+import UserStatsCardChart from "./components/UserStatsCardChart";
+import UserLessonDoneCardChart from "./components/UserLessonDoneCardChart";
+const UserEdit = ({ params }: { params: { id: string } }) => {
+  return (
+    <div className="space-y-4">
+      {}
+      <Typography variant="h3">Edit user: Joan</Typography>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        <UserStatsCardChart />
+        <UserLessonDoneCardChart />
+      </div>
+    </div>
+  );
+};
+export default UserEdit;
+---
+Path: /src/app/(authenticated)/dashboard/users/[id]/edit/components/UserLessonDoneCardChart.tsx
+
+"use client";
+import CustomAreaChart from "@/components/charts/CustomAreaChart";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import Typography from "@/components/ui/typography";
+import React from "react";
+const lessonDone = [
+  { name: "Mon", value: 2 },
+  { name: "Tues", value: 0 },
+  { name: "Wed", value: 3 },
+  { name: "Thur", value: 2 },
+  { name: "Fri", value: 4 },
+  { name: "Sat", value: 1 },
+  { name: "Sun", value: 0 },
+];
+const UserLessonDoneCardChart = () => {
+  return (
+    <Card>
+      <CardHeader>
+        <Typography variant="h4">Lessons done this week</Typography>
+      </CardHeader>
+      <CardContent>
+        <CustomAreaChart color="hsl(var(--primary))" data={lessonDone} />
+      </CardContent>
+    </Card>
+  );
+};
+export default UserLessonDoneCardChart;
+---
+Path: /src/app/(authenticated)/dashboard/users/[id]/edit/components/UserStatsCardChart.tsx
+
+"use client";
+import CustomRadarChart from "@/components/charts/CustomRadarChart";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import Typography from "@/components/ui/typography";
+import React from "react";
+const UserStatsCardChart = () => {
+  return (
+    <Card>
+      <CardHeader>
+        <Typography variant="h4">Stats</Typography>
+      </CardHeader>
+      <CardContent>
+        <CustomRadarChart />
+      </CardContent>
+    </Card>
+  );
+};
+export default UserStatsCardChart;
+---
+Path: /src/app/(authenticated)/dashboard/users/types/RoleOption.ts
+
+export type RoleOption = {
+  label: string;
+  value: string;
+};
+---
+Path: /src/app/(authenticated)/dashboard/users/_actions/userActions.ts
+
+"use server";
+import { legacyApiFetch } from "@/lib/api/server";
+import { ActionState } from "@/lib/types/actionState";
+import { InviteUserSchema, InviteUserType } from "@/lib/types/inviteuser";
+import { UserProfile } from "@/lib/types/userProfile";
+import { createClient } from "@/lib/utils/supabase/server";
+import { headers } from "next/headers";
+export async function inviteUserAction(
+  _: ActionState<InviteUserType>,
+  formData: FormData
+): Promise<ActionState<InviteUserType>> {
+  const headersList = headers();
+  const scheme = headersList.get("x-forwarded-proto") || "http";
+  const host = headersList.get("host");
+  const referer = `${scheme}:
+  const data = Object.fromEntries(formData.entries()) as InviteUserType;
+  const validatedFields = InviteUserSchema.safeParse(data);
+  if (!validatedFields.success) {
+    return {
+      success: false,
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: "There is error in the form. Please check the fields.",
+    };
+  }
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+  const getCurrentProfileRes = await legacyApiFetch(`/info/profile/${user.id}`);
+  const currentProfile = (await getCurrentProfileRes.json()) as UserProfile;
+  const body = {
+    email: validatedFields.data.email,
+    role: validatedFields.data.role,
+    organization:
+      validatedFields.data.organization || currentProfile.organizationId,
+    level: "EIKEN5",
+  };
+  const res = await legacyApiFetch("/info/profile", {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: {
+      Referer: referer,
+    },
+  });
+  if (!res.ok) {
+    const body = await res.json();
+    if (body.code === "USER_WITH_EMAIL_EXISTS") {
+      return {
+        success: false,
+        errors: {
+          email: ["User with this email already exists."],
+        },
+        message: "There is error in the form. Please check the fields.",
+      };
+    }
+  }
+  return { success: true, message: "User invited successfully", data: {} };
+}
+export const deleteUserAction = async (
+  userId: string
+): Promise<ActionState<undefined>> => {
+  return { success: false, message: "Not implemented yet" };
+};
+---
+Path: /src/app/(authenticated)/dashboard/users/_components/DeleteUserButton.tsx
+
+import React, { useEffect, useState, useTransition } from "react";
+import { Trash } from "lucide-react";
+import { ActionState } from "@/lib/types/actionState";
+import { useToast } from "@/components/ui/use-toast";
+import { deleteUserAction } from "../_actions/userActions";
+import { Button } from "@/components/ui/button";
+type DeleteUserButtonProps = {
+  userId: string;
+};
+export default function DeleteUserButton({ userId }: DeleteUserButtonProps) {
+  const [deletePending, startDeleteTransition] = useTransition();
+  const [deleteState, setDeleteState] = useState<ActionState<undefined>>({});
+  const { toast } = useToast();
+  async function deleteUser() {
+    startDeleteTransition(async () => {
+      const resState = await deleteUserAction(userId);
+      setDeleteState(resState);
+    });
+  }
+  useEffect(() => {
+    if (deleteState.success === false) {
+      toast({
+        variant: "destructive",
+        title: "Deletion failed",
+        description: deleteState.message,
+      });
+    } else if (deleteState.success) {
+      toast({
+        variant: "success",
+        title: "User deleted successfully",
+      });
+    }
+  }, [deleteState, toast]);
+  return (
+    <Button
+      onClick={deleteUser}
+      variant="destructive"
+      size="icon"
+      className="size-8"
+      loading={deletePending}
+    >
+      <Trash className="h-4 w-4" />
+      <span className="sr-only">Delete user</span>
+    </Button>
+  );
+}
+---
+Path: /src/app/(authenticated)/dashboard/users/_components/UserTableRow.tsx
+
+"use client";
+import React, { useTransition } from "react";
+import Link from "next/link";
+import { Edit, Trash } from "lucide-react";
+import { UserProfile } from "@/lib/types/userProfile";
+import { cn } from "@/lib/utils";
+import { useRouter } from "next/navigation";
+import DeleteUserButton from "./DeleteUserButton";
+import { TableCell, TableRow } from "@/components/ui/table";
+import { buttonVariants } from "@/components/ui/button";
+type UserTableRowProps = {
+  user: UserProfile;
+} & React.HTMLAttributes<HTMLTableRowElement>;
+const UserTableRow = ({ user, className, ...props }: UserTableRowProps) => {
+  const router = useRouter();
+  function navigateToUser() {
+    router.push(`/dashboard/users/${user.id}`);
+  }
+  return (
+    <TableRow
+      className={cn("hover:bg-muted cursor-pointer", className)}
+      {...props}
+    >
+      <TableCell className="font-medium">{user.name}</TableCell>
+      <TableCell>{user.role}</TableCell>
+      <TableCell>{user.level}</TableCell>
+      <TableCell>{user.organization?.name || "NA"}</TableCell>
+      <TableCell>{user.registered ? "Registered" : "Not registered"}</TableCell>
+      <TableCell className="text-right flex gap-4 justify-end">
+        <Link
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
+          href={`/dashboard/users/${user.id}/edit`}
+          className={cn(
+            buttonVariants({ variant: "outline", size: "icon" }),
+            "size-8"
+          )}
+        >
+          <Edit className="h-4 w-4" />
+          <span className="sr-only">Edit user</span>
+        </Link>
+        <DeleteUserButton userId={user.id} />
+      </TableCell>
+    </TableRow>
+  );
+};
+export default UserTableRow;
+---
+Path: /src/app/(authenticated)/dashboard/users/_components/UserTable.tsx
+
+import {
+  Table,
+  TableBody,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { notFound } from "next/navigation";
+import { UserProfile } from "@/lib/types/userProfile";
+import UserTableRow from "./UserTableRow";
+import { legacyApiFetch } from "@/lib/api/server";
+const UserTable = async () => {
+  await new Promise((resolve) => setTimeout(resolve, 4000));
+  const res = await legacyApiFetch("/info/profile");
+  if (!res.ok) {
+    notFound();
+  }
+  const users = (await res.json()) as UserProfile[];
+  return (
+    <>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Username</TableHead>
+            <TableHead>Role</TableHead>
+            <TableHead className="w-[100px]">Level</TableHead>
+            <TableHead>Organization</TableHead>
+            <TableHead>Registered</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {users.map((user) => (
+            <UserTableRow key={user.id} user={user} />
+          ))}
+        </TableBody>
+      </Table>
+    </>
+  );
+};
+export default UserTable;
+---
+Path: /src/app/(authenticated)/dashboard/users/_components/UserTableSkeleton.tsx
+
+"use client";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+type UserTableSkeletonProps = {
+  lines?: number;
+};
+const UserTableSkeleton = ({ lines = 20 }: UserTableSkeletonProps) => {
+  const generatedLines = Array(lines).fill(0);
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Username</TableHead>
+          <TableHead>Role</TableHead>
+          <TableHead className="w-[100px]">Level</TableHead>
+          <TableHead>Organization</TableHead>
+          <TableHead>Registered</TableHead>
+          <TableHead className="text-right">Actions</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {generatedLines.map((_, index) => (
+          <TableRow key={index}>
+            <TableCell className="font-medium">
+              <Skeleton className="w-[50px] h-[25px]" />
+            </TableCell>
+            <TableCell>
+              <Skeleton className="w-[40px] h-[25px]" />
+            </TableCell>
+            <TableCell>
+              <Skeleton className="w-[60px] h-[25px]" />
+            </TableCell>
+            <TableCell>
+              <Skeleton className="w-[100px] h-[25px]" />
+            </TableCell>
+            <TableCell>
+              <Skeleton className="size-[20px]" />
+            </TableCell>
+            <TableCell className="text-right flex gap-4 justify-end">
+              <Skeleton className="size-[35px]" />
+              <Skeleton className="size-[35px]" />
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+};
+export default UserTableSkeleton;
+---
+Path: /src/app/(authenticated)/dashboard/data/nav-links.ts
+
+import { LucideProps } from "lucide-react";
+import { ForwardRefExoticComponent, RefAttributes } from "react";
+import { FaSchool, FaUser, FaHouse, FaBookOpen } from "react-icons/fa6";
+import { HiUsers } from "react-icons/hi";
+import { IconType } from "react-icons/lib";
+type NavlinkIcon =
+  | ForwardRefExoticComponent<
+      Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>
+    >
+  | IconType;
+export type Navlink = {
+  href: string;
+  icon: NavlinkIcon;
+  title: string;
+  exact?: boolean;
+  needAdmin?: boolean;
+};
+const Navlinks: Navlink[] = [
+  {
+    href: "/dashboard",
+    icon: FaHouse,
+    title: "Overview",
+    exact: true,
+  },
+  {
+    href: "/dashboard/organizations",
+    icon: FaSchool,
+    title: "Organizations",
+    exact: false,
+    needAdmin: true,
+  },
+  {
+    href: "/dashboard/classrooms",
+    icon: HiUsers,
+    title: "Classrooms",
+    exact: false,
+  },
+  {
+    href: "/dashboard/users",
+    icon: FaUser,
+    title: "Users",
+    exact: false,
+  },
+  {
+    href: "/dashboard/courses",
+    icon: FaBookOpen,
+    title: "Courses",
+    exact: false,
+  },
+] as const;
+export default Navlinks;
+---
+Path: /src/app/(authenticated)/dashboard/organizations/page.tsx
+
+import React from "react";
+import { createClient } from "@/lib/utils/supabase/server";
+import Typography from "@/components/ui/typography";
+import { Organization } from "@/lib/types/organization";
+import OrganizationList from "./components/OrganizationList";
+import Link from "next/link";
+import { cn } from "@/lib/utils";
+import { buttonVariants } from "@/components/ui/button";
+import { Plus } from "lucide-react";
+import { legacyApiFetch } from "@/lib/api/server";
+import { protectRoute } from "@/lib/auth/protectedRoute";
+const OrganizationsPage = async () => {
+  const user = await protectRoute("ADMIN");
+  let organizations: Organization[] = [];
+  try {
+    const response = await legacyApiFetch("/organizations", {
+      next: {
+        tags: ["organizations"],
+      },
+    });
+    if (response.ok) {
+      organizations = await response.json();
+    } else {
+      console.error("Failed to fetch organizations");
+    }
+  } catch (error) {
+    console.error("Error fetching organizations:", error);
+  }
+  return (
+    <>
+      <div className="flex items-center justify-between">
+        <Typography variant="h3" className="text-foreground font-semibold">
+          Organizations
+        </Typography>
+        <Link
+          className={cn(
+            buttonVariants({ variant: "secondary" }),
+            "flex items-center gap-2"
+          )}
+          href="/dashboard/organizations/create"
+        >
+          <Plus className="h-4 w-4" />
+          Create organization
+        </Link>
+      </div>
+      <OrganizationList organizations={organizations} />
+    </>
+  );
+};
+export default OrganizationsPage;
+---
+Path: /src/app/(authenticated)/dashboard/organizations/create/page.tsx
+
+import React from "react";
+import Typography from "@/components/ui/typography";
+import CreateOrganizationForm from "../components/CreateOrganizationForm";
+const CreateOrganizationPage = () => {
+  return (
+    <>
+      <Typography variant="h3" className="text-foreground font-semibold mb-6">
+        Create New Organization
+      </Typography>
+      <CreateOrganizationForm />
+    </>
+  );
+};
+export default CreateOrganizationPage;
+---
+Path: /src/app/(authenticated)/dashboard/organizations/components/CreateOrganizationForm.tsx
+
+"use client";
+import React from "react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/use-toast";
+import { useRouter } from "next/navigation";
+import { useFormWithServerValidation } from "@/lib/hooks/useFormWithServerValidation";
+import {
+  organizationFormSchema,
+  OrganizationFormData,
+} from "@/lib/types/organization";
+import { ErrorActionState, SucessActionState } from "@/lib/types/actionState";
+import {
+  createOrganizationAction,
+  revalidateOrganizations,
+} from "../_actions/organizationActions";
+const CreateOrganizationForm = () => {
+  const { toast } = useToast();
+  const router = useRouter();
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+    isPending,
+    onSubmit,
+    serverState,
+  } = useFormWithServerValidation<OrganizationFormData>({
+    schema: organizationFormSchema,
+    serverAction: createOrganizationAction,
+    initialState: {},
+    onError: (e: ErrorActionState<OrganizationFormData>) => {
+      console.log("Fail");
+      toast({
+        title: "Error",
+        description: e.message || "Failed to create organization",
+        variant: "destructive",
+      });
+    },
+    onSuccess: (e: SucessActionState) => {
+      console.log("Success");
+      toast({
+        variant: "success",
+        title: "Success",
+        description: e.message || "Organization created successfully",
+      });
+      console.log("Redirecting to organizations page");
+      revalidateOrganizations();
+      router.push("/dashboard/organizations");
+    },
+  });
+  console.log("Current server state: ", serverState);
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <div>
+        <Input
+          {...register("name")}
+          placeholder="Organization Name"
+          className={errors.name ? "border-red-500" : ""}
+        />
+        {errors.name && (
+          <p className="text-red-500 text-sm mt-1">{errors.name.message}</p>
+        )}
+      </div>
+      <Button type="submit" loading={isPending} className="w-full md:w-fit">
+        Create Organization
+      </Button>
+    </form>
+  );
+};
+export default CreateOrganizationForm;
+---
+Path: /src/app/(authenticated)/dashboard/organizations/components/OrganizationList.tsx
+
+"use client";
+import React from "react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { useRouter } from "next/navigation";
+import { Organization } from "@/lib/types/organization";
+interface OrganizationListProps {
+  organizations: Organization[];
+}
+const OrganizationList: React.FC<OrganizationListProps> = ({
+  organizations,
+}) => {
+  const router = useRouter();
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Name</TableHead>
+          <TableHead className="text-right">Actions</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {organizations.map((org) => (
+          <TableRow key={org.id}>
+            <TableCell>{org.name}</TableCell>
+            <TableCell className="text-right">
+              <Button
+                variant="outline"
+                onClick={() =>
+                  router.push(`/dashboard/organizations/${org.id}`)
+                }
+              >
+                View Details
+              </Button>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+};
+export default OrganizationList;
+---
+Path: /src/app/(authenticated)/dashboard/organizations/_actions/organizationActions.ts
+
+"use server";
+import { legacyApiFetch } from "@/lib/api/server";
+import { ActionState } from "@/lib/types/actionState";
+import { OrganizationFormData } from "@/lib/types/organization";
+import { revalidateTag } from "next/cache";
+export async function createOrganizationAction(
+  prevState: ActionState<OrganizationFormData>,
+  formData: FormData
+): Promise<ActionState<OrganizationFormData>> {
+  try {
+    const name = formData.get("name") as string;
+    const response = await legacyApiFetch("/organizations", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      return {
+        success: false,
+        errors: errorData.errors || { name: "Failed to create organization" },
+        message: errorData.message || "Failed to create organization",
+      };
+    }
+    const data = await response.json();
+    console.log("Organization created:", data);
+    console.log("Revalidating organizations tag");
+    return {
+      success: true,
+      data,
+      message: "Organization created successfully",
+    };
+  } catch (error) {
+    console.error("Error creating organization:", error);
+    return {
+      success: false,
+      errors: { name: ["An unexpected error occurred"] },
+      message: "An unexpected error occurred",
+    };
+  }
+}
+export async function revalidateOrganizations() {
+  revalidateTag("organizations");
+}
+---
+Path: /src/app/(authenticated)/dashboard/organizations/test/page.tsx
+
+"use client";
+import React, { useCallback, useTransition } from "react";
+import { useFormState } from "react-dom";
+import { ActionState } from "@/lib/types/actionState";
+import { z } from "zod";
+import { useFormWithServerValidation } from "@/lib/hooks/useFormWithServerValidation";
+export const testSchema = z.object({
+  name: z
+    .string()
+    .min(1, "Organization name is required")
+    .min(3, "Organization name must be at least 3 characters"),
+});
+export type TestFormData = z.infer<typeof testSchema>;
+export default function SimpleFormPage() {
+  const { serverState, onSubmit, handleSubmit, isPending, register } =
+    useFormWithServerValidation<TestFormData>({
+      schema: testSchema,
+      serverAction: simpleFormAction,
+      initialState: {},
+      onSuccess: (e) => {
+        console.log("Success");
+        console.log("Organization created successfully");
+      },
+    });
+  console.log("Server state:", serverState);
+  async function simpleFormAction(
+    prevState: ActionState<TestFormData>,
+    formData: FormData
+  ): Promise<ActionState<{ name: string }>> {
+    const name = formData.get("name") as string;
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    console.log("Server action called with name:", name);
+    if (name.toLowerCase() === "error") {
+      return {
+        success: false,
+        errors: { name: ["Name cannot be 'error'"] },
+        message: "Form submission failed",
+      };
+    }
+    return {
+      success: true,
+      data: { name },
+      message: "Form submitted successfully",
+    };
+  }
+  console.log("Current server state:", serverState);
+  return (
+    <div className="p-4">
+      <h1 className="text-2xl font-bold mb-4">Simple Form</h1>
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <div>
+          <input
+            {...register("name")}
+            placeholder="Enter your name"
+            className="border p-2 rounded"
+          />
+          {serverState.success == false && serverState.errors?.name && (
+            <p className="text-red-500 text-sm mt-1">
+              {serverState.errors.name}
+            </p>
+          )}
+        </div>
+        <button
+          type="submit"
+          disabled={isPending}
+          className="bg-blue-500 text-white px-4 py-2 rounded"
+        >
+          {isPending ? "Submitting..." : "Submit"}
+        </button>
+      </form>
+      {serverState.success === true && (
+        <p className="text-green-500 mt-4">{serverState.message}</p>
+      )}
+      {serverState.success === false && (
+        <p className="text-red-500 mt-4">{serverState.message}</p>
+      )}
+    </div>
+  );
+}
+---
+Path: /src/app/_components/Providers.tsx
+
+"use client";
+import { AppProgressBar as ProgressBar } from "next-nprogress-bar";
+import { ReactNode } from "react";
+import { ThemeProvider } from "next-themes";
+import AuthProvider from "@/components/auth/AuthProvider";
+import { Toaster } from "@/components/ui/toaster";
+import { ProfileLoader } from "@/components/profile/ProfileLoader";
+const Providers = ({ children }: { children: ReactNode }) => {
+  return (
+    <>
+      <AuthProvider />
+      <ProfileLoader />
+      <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+        {children}
+      </ThemeProvider>
+      <Toaster />
+      <ProgressBar
+        height="4px"
+        color="hsl(var(--primary) / 0.5)"
+        options={{ showSpinner: false }}
+        shallowRouting
+      />
+    </>
+  );
+};
+export default Providers;
+---
+Path: /src/app/(unauthenticated)/layout.tsx
+
+import NavBar from "@/components/navigation/navbar";
+const isProduction = process.env.NODE_ENV === "production" && false;
+export default function UnauthenticatedLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <>
+      <NavBar displayDesignSystemLink={!isProduction} />
+      <main className="max-w-screen-xl mx-auto  pt-[73px] h-full">
+        <div className="p-5 md:p-7 h-full">{children}</div>
+      </main>
+    </>
+  );
+}
+---
+Path: /src/app/(unauthenticated)/page.tsx
+
+import Typography from "@/components/ui/typography";
+export default function Home() {
+  return (
+    <div className="h-full rounded-lg border-2 border-dashed flex items-center justify-center p-4">
+      <Typography variant={"h2"} className="text-background-300">
+        This will be the landing page
+      </Typography>
+    </div>
+  );
+}
+---
+Path: /src/app/(unauthenticated)/design-system/page.tsx
+
+import Section from "./components/section";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import Spinner from "@/components/ui/spinner";
+import Typography from "@/components/ui/typography";
+import Logo from "@/components/logo/logo";
+import ToastSection from "./components/sections/ToastSection";
+import TypographySection from "./components/sections/TypographySection";
+import LogoSection from "./components/sections/LogoSection";
+import ButtonSection from "./components/sections/ButtonSection";
+import SpinnerSection from "./components/sections/SpinnerSection";
+import InputSection from "./components/sections/InputSection";
+import SelectSection from "./components/sections/SelectSection";
+export default async function DesignSystem() {
+  return (
+    <div className="space-y-4 pb-8">
+      <Typography variant="h2" asChild>
+        <h1>Design system</h1>
+      </Typography>
+      <SpinnerSection />
+      <ButtonSection />
+      <SelectSection />
+      <InputSection />
+      <LogoSection />
+      <TypographySection />
+      <ToastSection />
+    </div>
+  );
+}
+---
+Path: /src/app/(unauthenticated)/design-system/components/section.tsx
+
+import { cn } from "@/lib/utils";
+interface Props extends React.HTMLAttributes<HTMLDivElement> {
+  title: string;
+}
+export default function Section({
+  title,
+  className,
+  children,
+  ...rest
+}: Props) {
+  return (
+    <section {...rest} className={cn("relative w-fit pt-4", className)}>
+      <div className="border-2 border-background-200 rounded-md p-5 pt-6 border-dashed pr-10">
+        <span className="absolute top-0 left-3 bg-background px-1 text-xl font-medium text-background-300">
+          {title}
+        </span>
+        {children}
+      </div>
+    </section>
+  );
+}
+---
+Path: /src/app/(unauthenticated)/design-system/components/sections/SpinnerSection.tsx
+
+import React from "react";
+import Section from "../section";
+import Spinner from "@/components/ui/spinner";
+export default function SpinnerSection() {
+  return (
+    <Section title="Spinners" className="w-full">
+      {}
+      <div className="space-y-4">
+        {}
+        <div className="space-x-4">
+          <Spinner variant="primary" size="sm"></Spinner>
+          <Spinner variant="primary" size="md"></Spinner>
+          <Spinner variant="primary" size="lg"></Spinner>
+          <Spinner variant="primary" size="xl"></Spinner>
+        </div>
+        {}
+        <div className="space-x-4">
+          <Spinner variant="primary-dark" size="sm"></Spinner>
+          <Spinner variant="primary-dark" size="md"></Spinner>
+          <Spinner variant="primary-dark" size="lg"></Spinner>
+          <Spinner variant="primary-dark" size="xl"></Spinner>
+        </div>
+        {}
+        <div className="space-x-4">
+          <Spinner variant="white" size="sm"></Spinner>
+          <Spinner variant="white" size="md"></Spinner>
+          <Spinner variant="white" size="lg"></Spinner>
+          <Spinner variant="white" size="xl"></Spinner>
+        </div>
+        {}
+        <div className="space-x-4">
+          <Spinner variant="black" size="sm"></Spinner>
+          <Spinner variant="black" size="md"></Spinner>
+          <Spinner variant="black" size="lg"></Spinner>
+          <Spinner variant="black" size="xl"></Spinner>
+        </div>
+      </div>
+    </Section>
+  );
+}
+---
+Path: /src/app/(unauthenticated)/design-system/components/sections/TypographySection.tsx
+
+import Typography from "@/components/ui/typography";
+import React from "react";
+import Section from "../section";
+export default function TypographySection() {
+  return (
+    <Section title="Typography" className="w-full">
+      <div className="space-y-4">
+        {}
+        <div className="space-y-8 md:space-y-4">
+          <Typography variant="display">Display Lorem ipsum</Typography>
+          <Typography variant="h1">H1 Lorem ipsum dolor sit</Typography>
+          <Typography variant="h2">H2 Lorem ipsum dolor sit</Typography>
+          <Typography variant="h3">H3 Lorem ipsum dolor sit</Typography>
+          <Typography variant="h4">H4 Lorem ipsum dolor sit</Typography>
+          <Typography variant="h5">H5 Lorem ipsum dolor sit</Typography>
+          <Typography variant="h6">H6 Lorem ipsum dolor sit</Typography>
+          <Typography variant="lead">Lead Lorem ipsum dolor sit</Typography>
+          <Typography variant="body-lg">
+            Body LG Lorem ipsum dolor sit
+          </Typography>
+          <Typography variant="body-md">
+            Body MD Lorem ipsum dolor sit
+          </Typography>
+          <Typography variant="body-sm">
+            Body SM Lorem ipsum dolor sit
+          </Typography>
+          <Typography variant="caption-1">
+            Caption 1/regular Lorem ipsum dolor sit
+          </Typography>
+          <Typography variant="caption-1" weight="medium">
+            Caption 1/medium Lorem ipsum dolor sit
+          </Typography>
+          <Typography variant="caption-2">
+            Caption 2/regular Lorem ipsum dolor sit
+          </Typography>
+          <Typography variant="caption-2" weight="medium">
+            Caption 2/medium Lorem ipsum dolor sit
+          </Typography>
+          <Typography variant="caption-3">
+            Caption 3/regular Lorem ipsum dolor sit
+          </Typography>
+          <Typography variant="caption-3" weight="medium">
+            Caption 3/medium Lorem ipsum dolor sit
+          </Typography>
+          <Typography variant="caption-4">
+            Caption 4/regular Lorem ipsum dolor sit
+          </Typography>
+          <Typography variant="caption-4" weight="medium">
+            Caption 4/medium Lorem ipsum dolor sit
+          </Typography>
+        </div>
+      </div>
+    </Section>
+  );
+}
+---
+Path: /src/app/(unauthenticated)/design-system/components/sections/LogoSection.tsx
+
+import React from "react";
+import Section from "../section";
+import Logo from "@/components/logo/logo";
+export default function LogoSection() {
+  return (
+    <Section title="Logos" className="w-full">
+      <div className="space-y-4">
+        {}
+        <div className="flex space-x-4 items-center">
+          <Logo variant="primary" size="xs" />
+          <Logo variant="primary" size="sm" />
+          <Logo variant="primary" size="md" />
+          <Logo variant="primary" size="lg" />
+          <Logo variant="primary" size="xl" />
+        </div>
+        {}
+        <div className="flex space-x-4 items-center">
+          <Logo variant="white" size="xs" />
+          <Logo variant="white" size="sm" />
+          <Logo variant="white" size="md" />
+          <Logo variant="white" size="lg" />
+          <Logo variant="white" size="xl" />
+        </div>
+        {}
+        <div className="flex space-x-4 items-center">
+          <Logo variant="black" size="xs" />
+          <Logo variant="black" size="sm" />
+          <Logo variant="black" size="md" />
+          <Logo variant="black" size="lg" />
+          <Logo variant="black" size="xl" />
+        </div>
+      </div>
+    </Section>
+  );
+}
+---
+Path: /src/app/(unauthenticated)/design-system/components/sections/ToastSection.tsx
+
+"use client";
+import React from "react";
+import Section from "../section";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/use-toast";
+export default function ToastSection() {
+  const { toast } = useToast();
+  function handleDefaultToast() {
+    toast({
+      title: "Default Toast",
+      description: "This is a default toast",
+    });
+  }
+  function handleSuccessToast() {
+    toast({
+      title: "Success Toast",
+      description: "This is a success toast",
+      variant: "success",
+    });
+  }
+  function handleDestructiveToast() {
+    toast({
+      title: "Destructive Toast",
+      description: "This is a destructive toast",
+      variant: "destructive",
+    });
+  }
+  return (
+    <Section title="Toasts" className="w-full">
+      <div className="space-y-4">
+        {}
+        <div className="flex space-x-4 items-center">
+          <Button onClick={handleDefaultToast} variant="secondary">
+            Default Toast
+          </Button>
+          <Button onClick={handleSuccessToast} variant="secondary">
+            Success Toast
+          </Button>
+          <Button onClick={handleDestructiveToast} variant="secondary">
+            Destructive Toast
+          </Button>
+        </div>
+      </div>
+    </Section>
+  );
+}
+---
+Path: /src/app/(unauthenticated)/design-system/components/sections/InputSection.tsx
+
+import React from "react";
+import Section from "../section";
+import { Input } from "@/components/ui/input";
+export default function InputSection() {
+  return (
+    <Section title="Inputs" className="w-full">
+      <div className="space-y-4 w-72">
+        {}
+        <div className="flex flex-col space-y-4 items-center">
+          <Input h="sm" placeholder="Input..." />
+          <Input h="md" placeholder="Input..." />
+          <Input h="lg" placeholder="Input..." />
+        </div>
+      </div>
+    </Section>
+  );
+}
+---
+Path: /src/app/(unauthenticated)/design-system/components/sections/ButtonSection.tsx
+
+import { Button } from "@/components/ui/button";
+import React from "react";
+import Section from "../section";
+export default function ButtonSection() {
+  return (
+    <Section title="Buttons" className="w-full">
+      <div className="flex gap-10">
+        {}
+        <div className="space-y-4">
+          {}
+          <div className="space-x-4 space-y-4">
+            <Button variant="primary" size="lg">
+              Button
+            </Button>
+            <Button variant="primary" size="md">
+              Button
+            </Button>
+            <Button variant="primary" size="sm">
+              Button
+            </Button>
+          </div>
+          {}
+          <div className="space-x-4 space-y-4">
+            <Button variant="secondary" size="lg">
+              Button
+            </Button>
+            <Button variant="secondary" size="md">
+              Button
+            </Button>
+            <Button variant="secondary" size="sm">
+              Button
+            </Button>
+          </div>
+          {}
+          <div className="space-x-4 space-y-4">
+            <Button variant="outline" size="lg">
+              Button
+            </Button>
+            <Button variant="outline" size="md">
+              Button
+            </Button>
+            <Button variant="outline" size="sm">
+              Button
+            </Button>
+          </div>
+          {}
+          <div className="space-x-4 space-y-4">
+            <Button variant="destructive" size="lg">
+              Button
+            </Button>
+            <Button variant="destructive" size="md">
+              Button
+            </Button>
+            <Button variant="destructive" size="sm">
+              Button
+            </Button>
+          </div>
+          {}
+          <div className="space-x-4 space-y-4">
+            <Button variant="ghost" size="lg">
+              Button
+            </Button>
+            <Button variant="ghost" size="md">
+              Button
+            </Button>
+            <Button variant="ghost" size="sm">
+              Button
+            </Button>
+          </div>
+          {}
+          <div className="space-x-4 space-y-4">
+            <Button variant="link" size="lg">
+              Button
+            </Button>
+            <Button variant="link" size="md">
+              Button
+            </Button>
+            <Button variant="link" size="sm">
+              Button
+            </Button>
+          </div>
+        </div>
+        {}
+        <div className="space-y-4">
+          {}
+          <div className="space-x-4 space-y-4">
+            <Button disabled variant="primary" size="lg">
+              Button
+            </Button>
+            <Button disabled variant="primary" size="md">
+              Button
+            </Button>
+            <Button disabled variant="primary" size="sm">
+              Button
+            </Button>
+          </div>
+          {}
+          <div className="space-x-4 space-y-4">
+            <Button disabled variant="secondary" size="lg">
+              Button
+            </Button>
+            <Button disabled variant="secondary" size="md">
+              Button
+            </Button>
+            <Button disabled variant="secondary" size="sm">
+              Button
+            </Button>
+          </div>
+          {}
+          <div className="space-x-4 space-y-4">
+            <Button disabled variant="outline" size="lg">
+              Button
+            </Button>
+            <Button disabled variant="outline" size="md">
+              Button
+            </Button>
+            <Button disabled variant="outline" size="sm">
+              Button
+            </Button>
+          </div>
+          {}
+          <div className="space-x-4 space-y-4">
+            <Button disabled variant="destructive" size="lg">
+              Button
+            </Button>
+            <Button disabled variant="destructive" size="md">
+              Button
+            </Button>
+            <Button disabled variant="destructive" size="sm">
+              Button
+            </Button>
+          </div>
+          {}
+          <div className="space-x-4 space-y-4">
+            <Button disabled variant="ghost" size="lg">
+              Button
+            </Button>
+            <Button disabled variant="ghost" size="md">
+              Button
+            </Button>
+            <Button disabled variant="ghost" size="sm">
+              Button
+            </Button>
+          </div>
+          {}
+          <div className="space-x-4 space-y-4">
+            <Button disabled variant="link" size="lg">
+              Button
+            </Button>
+            <Button disabled variant="link" size="md">
+              Button
+            </Button>
+            <Button disabled variant="link" size="sm">
+              Button
+            </Button>
+          </div>
+        </div>
+        {}
+        <div className="space-y-4">
+          {}
+          <div className="space-x-4 space-y-4">
+            <Button loading variant="primary" size="lg">
+              Button
+            </Button>
+            <Button loading variant="primary" size="md">
+              Button
+            </Button>
+            <Button loading variant="primary" size="sm">
+              Button
+            </Button>
+          </div>
+          {}
+          <div className="space-x-4 space-y-4">
+            <Button loading variant="secondary" size="lg">
+              Button
+            </Button>
+            <Button loading variant="secondary" size="md">
+              Button
+            </Button>
+            <Button loading variant="secondary" size="sm">
+              Button
+            </Button>
+          </div>
+          {}
+          <div className="space-x-4 space-y-4">
+            <Button loading variant="outline" size="lg">
+              Button
+            </Button>
+            <Button loading variant="outline" size="md">
+              Button
+            </Button>
+            <Button loading variant="outline" size="sm">
+              Button
+            </Button>
+          </div>
+          {}
+          <div className="space-x-4 space-y-4">
+            <Button loading variant="destructive" size="lg">
+              Button
+            </Button>
+            <Button loading variant="destructive" size="md">
+              Button
+            </Button>
+            <Button loading variant="destructive" size="sm">
+              Button
+            </Button>
+          </div>
+          {}
+          <div className="space-x-4 space-y-4">
+            <Button loading variant="ghost" size="lg">
+              Button
+            </Button>
+            <Button loading variant="ghost" size="md">
+              Button
+            </Button>
+            <Button loading variant="ghost" size="sm">
+              Button
+            </Button>
+          </div>
+          {}
+          <div className="space-x-4 space-y-4">
+            <Button loading variant="link" size="lg">
+              Button
+            </Button>
+            <Button loading variant="link" size="md">
+              Button
+            </Button>
+            <Button loading variant="link" size="sm">
+              Button
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Section>
+  );
+}
+---
+Path: /src/app/(unauthenticated)/design-system/components/sections/SelectSection.tsx
+
+import { Button } from "@/components/ui/button";
+import React from "react";
+import Section from "../section";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+export default function SelectSection() {
+  const selectValues = [
+    {
+      id: 1,
+      name: "Select item 1",
+      value: "select-item-1",
+    },
+    {
+      id: 2,
+      name: "Select item 2",
+      value: "select-item-2",
+    },
+    {
+      id: 3,
+      name: "Select item 3",
+      value: "select-item-3",
+    },
+    {
+      id: 4,
+      name: "Select item 4",
+      value: "select-item-4",
+    },
+  ] as const;
+  return (
+    <Section title="Selects" className="w-full">
+      <div className="flex gap-10">
+        {}
+        <div className="space-y-4">
+          {}
+          <div className="space-y-4">
+            <Select>
+              <SelectTrigger id="organization" className="w-full text-left">
+                <SelectValue placeholder="Select an organization" />
+              </SelectTrigger>
+              <SelectContent>
+                {selectValues.map((item) => (
+                  <SelectItem key={item.id} value={item.value}>
+                    {item.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        {}
+        <div className="space-y-4">
+          {}
+          <div className="space-y-4">
+            <Select>
+              <SelectTrigger
+                variant="ghost"
+                id="organization"
+                className="w-full text-left"
+              >
+                <SelectValue placeholder="Select an organization" />
+              </SelectTrigger>
+              <SelectContent>
+                {selectValues.map((item) => (
+                  <SelectItem key={item.id} value={item.value}>
+                    {item.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </div>
+    </Section>
+  );
+}
+---
+Path: /src/app/(auth)/login/page.tsx
+
+import Logo from "@/components/logo/logo";
+import Link from "next/link";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+} from "@/components/ui/card";
+import Typography from "@/components/ui/typography";
+import { Suspense } from "react";
+import LoginForm from "./components/LoginForm";
+export default function LoginPage() {
+  return (
+    <section className="bg-background">
+      <div className="flex flex-col items-center justify-center px-6 py-8 mx-auto md:h-screen lg:py-0">
+        <Link
+          href="/"
+          className="flex items-center mb-6 text-2xl font-semibold"
+        >
+          <Logo size="sm" className="mr-2" />
+          <div className="mt-2">One Learn</div>
+        </Link>
+        <Card className="w-full md:mt-0 sm:max-w-md xl:p-0">
+          <CardHeader>
+            <Typography variant="h3" className="font-bold" asChild>
+              <h1>Sign in to your account</h1>
+            </Typography>
+          </CardHeader>
+          <CardContent>
+            <Suspense fallback={<div>Loading...</div>}>
+              <LoginForm />
+            </Suspense>
+          </CardContent>
+          <CardFooter>
+            <p className="text-sm font-light text-slate-500 dark:text-slate-300">
+              Don’t have an account yet?{" "}
+              <Link
+                href="/register"
+                className="font-medium text-primary hover:underline"
+              >
+                Sign up
+              </Link>
+            </p>
+          </CardFooter>
+        </Card>
+      </div>
+    </section>
+  );
+}
+---
+Path: /src/app/(auth)/login/components/LoginForm.tsx
+
+"use client";
+import { z } from "zod";
+import { useFormState } from "react-dom";
+import FormButton from "@/components/ui/form-button";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Input } from "@/components/ui/input";
+import Typography from "@/components/ui/typography";
+import { createClient } from "@/lib/utils/supabase/client";
+const LoginSchema = z.object({
+  email: z.string().email({ message: "Please enter a valid email." }),
+  password: z
+    .string()
+    .min(8, { message: "Password must be at least 8 characters." }),
+});
+type LoginFormState = {
+  errors?: {
+    email?: string[];
+    password?: string[];
+  };
+  message?: string | null;
+};
+export default function LoginForm() {
+  const searchParams = useSearchParams();
+  const redirect = searchParams.get("redirect") || "/";
+  const initialState = { message: null, errors: {} };
+  const [state, dispatch] = useFormState(loginAction, initialState);
+  const router = useRouter();
+  async function loginAction(
+    _: LoginFormState,
+    formData: FormData
+  ): Promise<LoginFormState> {
+    const validatedFields = LoginSchema.safeParse({
+      email: formData.get("email"),
+      password: formData.get("password"),
+    });
+    if (!validatedFields.success) {
+      return {
+        errors: validatedFields.error.flatten().fieldErrors,
+        message: "There is error in the form. Please check the fields.",
+      };
+    }
+    const supabase = createClient();
+    const data = validatedFields.data;
+    const { error } = await supabase.auth.signInWithPassword(data);
+    if (error) {
+      console.log(error);
+      console.log(error.cause);
+      console.log(error.name);
+      return {
+        errors: {
+          email: [error.message],
+        },
+        message: "There is an error with your email or password.",
+      };
+    }
+    router.refresh();
+    router.push(redirect);
+    return {};
+  }
+  return (
+    <form className="space-y-4 md:space-y-6" action={dispatch} noValidate>
+      <div>
+        <Typography
+          variant="body-sm"
+          className="block mb-2 text-card-foreground"
+          asChild
+        >
+          <label htmlFor="email">Your email</label>
+        </Typography>
+        <Input
+          type="email"
+          name="email"
+          id="email"
+          placeholder="name@company.com"
+          aria-describedby="email-error"
+        />
+        <div id="email-error" aria-live="polite" aria-atomic="true">
+          {state.errors?.email &&
+            state.errors.email.map((error: string) => (
+              <p className="mt-2 text-sm text-destructive" key={error}>
+                {error}
+              </p>
+            ))}
+        </div>
+      </div>
+      <div>
+        <Typography
+          variant="body-sm"
+          className="block mb-2 text-card-foreground"
+          asChild
+        >
+          <label htmlFor="password">Password</label>
+        </Typography>
+        <Input
+          type="password"
+          name="password"
+          id="password"
+          placeholder="••••••••"
+          aria-describedby="password-error"
+        />
+        <div id="password-error" aria-live="polite" aria-atomic="true">
+          {state.errors?.password &&
+            state.errors.password.map((error: string) => (
+              <p className="mt-2 text-sm text-destructive" key={error}>
+                {error}
+              </p>
+            ))}
+        </div>
+      </div>
+      <div className="flex items-center justify-between">
+        <a
+          href="#"
+          className="text-sm font-medium text-primary-600 hover:underline"
+        >
+          Forgot password?
+        </a>
+      </div>
+      <div id="form-error" aria-live="polite" aria-atomic="true">
+        {state.message && (
+          <p className="mt-2 text-sm text-destructive">{state.message}</p>
+        )}
+      </div>
+      <FormButton full type="submit">
+        Sign in
+      </FormButton>
+    </form>
+  );
+}
+---
+Path: /src/app/(auth)/define-password/page.tsx
+
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import React, { Suspense } from "react";
+import Link from "next/link";
+import Typography from "@/components/ui/typography";
+import Logo from "@/components/logo/logo";
+import DefinePasswordForm from "./components/DefinePasswordForm";
+import { useRouter } from "next/navigation";
+type queryParams = {
+  searchParams: {
+    access_token: string;
+  };
+};
+const DefinePassword = ({ searchParams }: queryParams) => {
+  return (
+    <section className="bg-background">
+      <div className="flex flex-col items-center justify-center px-6 py-8 mx-auto md:h-screen lg:py-0">
+        <Link
+          href="/"
+          className="flex items-center mb-6 text-2xl font-semibold"
+        >
+          <Logo size="sm" className="mr-2" />
+          <div className="mt-2">One Learn</div>
+          <pre>{searchParams.access_token}</pre>
+        </Link>
+        <Card className="w-full md:mt-0 sm:max-w-md xl:p-0">
+          <CardHeader>
+            <Typography variant="h3" className="font-bold" asChild>
+              <h1>You&apos;ve been invited</h1>
+            </Typography>
+            <Typography variant="h5" className="text-muted-foreground" asChild>
+              <h1>Define your password</h1>
+            </Typography>
+          </CardHeader>
+          <CardContent>
+            <Suspense fallback={<div>Loading...</div>}>
+              <DefinePasswordForm />
+            </Suspense>
+          </CardContent>
+        </Card>
+      </div>
+    </section>
+  );
+};
+export default DefinePassword;
+---
+Path: /src/app/(auth)/define-password/components/DefinePasswordForm.tsx
+
+"use client";
+import { useFormState } from "react-dom";
+import FormButton from "@/components/ui/form-button";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Input } from "@/components/ui/input";
+import Typography from "@/components/ui/typography";
+import { definePasswordAction } from "../actions/definePasswordAction";
+import { useEffect, useState } from "react";
+import { jwtDecode } from "jwt-decode";
+type InviteParams =
+  | {
+      isError: false;
+      token: string;
+      type: string;
+      token_type: string;
+      email: string;
+      refresh_token: string;
+      expires_at: string;
+      expires_in: string;
+    }
+  | {
+      isError: true;
+      error: string;
+      error_code?: string;
+      error_description?: string;
+    };
+export default function DefinePasswordForm() {
+  const [inviteParams, setInviteParams] = useState<InviteParams | null>(null);
+  const initialState = { message: null, errors: {} };
+  const [state, dispatch] = useFormState(definePasswordAction, initialState);
+  console.log(state);
+  useEffect(() => {
+    const hash = window.location.hash;
+    const params = new URLSearchParams(hash.substring(1));
+    const token = params.get("access_token");
+    const type = params.get("type");
+    const token_type = params.get("token_type");
+    const refresh_token = params.get("refresh_token");
+    const expires_at = params.get("expires_at");
+    const expires_in = params.get("expires_in");
+    const error = params.get("error");
+    const error_code = params.get("error_code");
+    const error_description = params.get("error_description");
+    if (error) {
+      setInviteParams({
+        isError: true,
+        error: error,
+        error_code: error_code || undefined,
+        error_description: error_description || undefined,
+      });
+    } else {
+      const { email } = jwtDecode<{ email: string | undefined }>(token || "");
+      console.log(email);
+      setInviteParams({
+        isError: false,
+        token: token || "",
+        type: type || "",
+        email: email || "",
+        token_type: token_type || "",
+        refresh_token: refresh_token || "",
+        expires_at: expires_at || "",
+        expires_in: expires_in || "",
+      });
+    }
+  }, []);
+  return (
+    <>
+      {inviteParams?.isError && (
+        <p className="text-destructive">
+          {inviteParams.error_description || "Someting went wrong."}
+        </p>
+      )}
+      {!inviteParams?.isError && (
+        <form className="space-y-4 md:space-y-6" action={dispatch} noValidate>
+          <div>
+            <Typography
+              variant="body-sm"
+              className="block mb-2 text-card-foreground"
+              asChild
+            >
+              <label htmlFor="password">Email: {inviteParams?.email}</label>
+            </Typography>
+            <Input
+              type="hidden"
+              name="email"
+              id="email"
+              hidden
+              placeholder="example@domain.com"
+              aria-describedby="email-error"
+              defaultValue={inviteParams?.email}
+            />
+            <div id="email-error" aria-live="polite" aria-atomic="true">
+              {state.errors?.email &&
+                state.errors.email.map((error: string) => (
+                  <p className="mt-2 text-sm text-destructive" key={error}>
+                    {error}
+                  </p>
+                ))}
+            </div>
+          </div>
+          <div>
+            <Typography
+              variant="body-sm"
+              className="block mb-2 text-card-foreground"
+              asChild
+            >
+              <label htmlFor="password">Password</label>
+            </Typography>
+            <Input
+              type="password"
+              name="password"
+              id="password"
+              placeholder="••••••••"
+              aria-describedby="password-error"
+            />
+            <div id="password-error" aria-live="polite" aria-atomic="true">
+              {state.errors?.password &&
+                state.errors.password.map((error: string) => (
+                  <p className="mt-2 text-sm text-destructive" key={error}>
+                    {error}
+                  </p>
+                ))}
+            </div>
+          </div>
+          <div>
+            <Typography
+              variant="body-sm"
+              className="block mb-2 text-card-foreground"
+              asChild
+            >
+              <label htmlFor="password">Confirm password</label>
+            </Typography>
+            <Input
+              type="password"
+              name="confirmPassword"
+              id="confirmPassword"
+              placeholder="••••••••"
+              aria-describedby="confirmPassword-error"
+            />
+            <div
+              id="confirmPassword-error"
+              aria-live="polite"
+              aria-atomic="true"
+            >
+              {state.errors?.confirmPassword &&
+                state.errors.confirmPassword.map((error: string) => (
+                  <p className="mt-2 text-sm text-destructive" key={error}>
+                    {error}
+                  </p>
+                ))}
+            </div>
+            {}
+            <div>
+              <Input
+                type="hidden"
+                name="access_token"
+                defaultValue={inviteParams?.token}
+              />
+              <Input type="hidden" name="type" value={inviteParams?.type} />
+              <Input
+                type="hidden"
+                name="token_type"
+                defaultValue={inviteParams?.token_type}
+              />
+              <Input
+                type="hidden"
+                name="refresh_token"
+                defaultValue={inviteParams?.refresh_token}
+              />
+              <Input
+                type="hidden"
+                name="expires_at"
+                defaultValue={inviteParams?.expires_at}
+              />
+              <Input
+                type="hidden"
+                name="expires_in"
+                defaultValue={inviteParams?.expires_in}
+              />
+            </div>
+          </div>
+          <div id="form-error" aria-live="polite" aria-atomic="true">
+            {state.message && (
+              <p className="mt-2 text-sm text-destructive">{state.message}</p>
+            )}
+          </div>
+          <FormButton full type="submit">
+            Define your password
+          </FormButton>
+        </form>
+      )}
+    </>
+  );
+}
+---
+Path: /src/app/(auth)/define-password/actions/definePasswordAction.ts
+
+"use server";
+import { createClient } from "@/lib/utils/supabase/server";
+import { redirect } from "next/navigation";
+import { z } from "zod";
+type DefinePasswordFormState = {
+  errors?: {
+    email?: string[];
+    password?: string[];
+    confirmPassword?: string[];
+    access_token?: string[];
+    refresh_token?: string[];
+  };
+  message?: string | null;
+};
+const DefinePasswordSchema = z
+  .object({
+    email: z.string().email({ message: "Please enter a valid email." }),
+    password: z
+      .string()
+      .min(8, { message: "Password must be at least 8 characters." }),
+    confirmPassword: z.string(),
+    access_token: z.string().min(1),
+    refresh_token: z.string().min(1),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
+export async function definePasswordAction(
+  _: DefinePasswordFormState,
+  formData: FormData
+): Promise<DefinePasswordFormState> {
+  console.log(formData.get("email"));
+  const validatedFields = DefinePasswordSchema.safeParse({
+    email: formData.get("email"),
+    access_token: formData.get("access_token"),
+    refresh_token: formData.get("refresh_token"),
+    password: formData.get("password"),
+    confirmPassword: formData.get("confirmPassword"),
+  });
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: "There is error in the form. Please check the fields.",
+    };
+  }
+  const supabase = createClient({ asAdmin: true });
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.setSession({
+    access_token: validatedFields.data.access_token,
+    refresh_token: validatedFields.data.refresh_token,
+  });
+  if (error) {
+    return {
+      message: error.message,
+    };
+  }
+  if (!user) {
+    return {
+      message: "User not found",
+    };
+  }
+  supabase.auth.admin.updateUserById(user.id, {
+    password: validatedFields.data.password,
+  });
+  redirect("/login");
+}
+---
+
